@@ -159,9 +159,10 @@ authorizeUrl :: OAuth           -- ^ OAuth Application
              -> Credential      -- ^ Temporary Credential (Request Token & Secret)
              -> String          -- ^ URL to authorize
 authorizeUrl oa cr = oauthAuthorizeUri oa ++ BS.unpack (renderSimpleQuery True queries)
-  where queries = case oauthCallback oa of
-                    Nothing       -> [("oauth_token", token cr)]
-                    Just callback -> [("oauth_token", token cr), ("oauth_callback", callback)]
+  where fixed = [ ("oauth_token", token cr), ("oauth_consumer_key", oauthConsumerKey oa)]
+        queries = case oauthCallback oa of
+                    Nothing       -> fixed
+                    Just callback -> ("oauth_callback", callback):fixed
 
 -- | Get Access token.
 getAccessToken, getTokenCredential
