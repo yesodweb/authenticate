@@ -109,6 +109,7 @@ data SignMethod = PLAINTEXT
                 | HMACSHA1
                 | RSASHA1 PrivateKey
                   deriving (Show, Eq, Ord, Read, Data, Typeable)
+deriving instance Ord PublicKey
 deriving instance Ord PrivateKey
 deriving instance Ord PublicKey
 
