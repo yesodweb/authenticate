@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable, OverloadedStrings, StandaloneDeriving, FlexibleContexts #-}
 {-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 module Web.Authenticate.OAuth
@@ -20,7 +21,11 @@ module Web.Authenticate.OAuth
       paramEncode, addScope, addMaybeProxy
     ) where
 import Network.HTTP.Conduit
+#if MIN_VERSION_base(4,7,0)
+import Data.Data hiding (Proxy(..))
+#else
 import Data.Data
+#endif
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import Data.Maybe
