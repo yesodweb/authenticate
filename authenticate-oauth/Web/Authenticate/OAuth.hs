@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, OverloadedStrings, StandaloneDeriving, FlexibleContexts #-}
+{-# LANGUAGE DeriveDataTypeable, OverloadedStrings, StandaloneDeriving, FlexibleContexts, CPP #-}
 {-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 module Web.Authenticate.OAuth
     ( -- * Data types
@@ -21,6 +21,9 @@ module Web.Authenticate.OAuth
     ) where
 import Network.HTTP.Conduit
 import Data.Data
+#if __GLASGOW_HASKELL__ >= 707
+         hiding (Proxy)
+#endif
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import Data.Maybe
