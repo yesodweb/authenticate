@@ -5,13 +5,13 @@
 -- What this module do is just adding 'withManager' or 'runResourceT'.
 module Web.Authenticate.OAuth.IO
     {-# DEPRECATED "This module is deprecated; rewrite your code using MonadResource" #-}
-    ( 
+    (
       module Web.Authenticate.OAuth,
       getAccessToken,
       getTemporaryCredential, getTemporaryCredentialWithScope,
       getTemporaryCredentialProxy, getTemporaryCredential',
       getTokenCredential,
-      getAccessTokenProxy, getTokenCredentialProxy, 
+      getAccessTokenProxy, getTokenCredentialProxy,
       getAccessToken'
     ) where
 import Network.HTTP.Conduit
@@ -24,7 +24,7 @@ import Web.Authenticate.OAuth hiding
      getAccessTokenProxy, getTemporaryCredentialProxy,
      getTokenCredentialProxy,
      getAccessToken', getTemporaryCredential')
-import Data.Conduit
+
 import Control.Monad.IO.Class
 import qualified Data.ByteString.Char8 as BS
 
