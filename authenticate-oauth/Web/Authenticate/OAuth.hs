@@ -35,54 +35,20 @@ import           Data.Char
 import           Data.Conduit                 (Source, ($$), ($=))
 import           Data.Conduit.Blaze           (builderToByteString)
 import qualified Data.Conduit.List            as CL
+import           Data.Data                    (Data())
 import           Data.Default
 import           Data.Digest.Pure.SHA
 import qualified Data.IORef                   as I
 import           Data.List                    (sortBy)
 import           Data.Maybe
 import           Data.Time
+import           Data.Typeable                (Typeable)
 import           Network.HTTP.Conduit
 import           Network.HTTP.Types           (SimpleQuery, parseSimpleQuery)
 import           Network.HTTP.Types           (Header)
 import           Network.HTTP.Types           (renderSimpleQuery, status200)
 import           Numeric
 import           System.Random
-#if MIN_VERSION_base(4,7,0)
-import Data.Data hiding (Proxy (..))
-#else
-import Data.Data
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy.Char8 as BSL
-import Data.Maybe
-import Network.HTTP.Types (parseSimpleQuery, SimpleQuery)
-import Control.Exception
-import Control.Monad
-import Data.List (sortBy)
-import System.Random
-import Data.Char
-import Data.Digest.Pure.SHA
-import Data.ByteString.Base64
-import Data.Time
-import Numeric
-#if MIN_VERSION_RSA(2, 0, 0)
-import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, hashSHA1)
-#else
-import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, ha_SHA1)
-#endif
-import Crypto.Types.PubKey.RSA (PrivateKey(..), PublicKey(..))
-import Network.HTTP.Types (Header)
-import Blaze.ByteString.Builder (toByteString)
-import Control.Monad.IO.Class (MonadIO)
-import Network.HTTP.Types (renderSimpleQuery, status200)
-import Data.Conduit (($$), ($=), Source)
-import qualified Data.Conduit.List as CL
-import Data.Conduit.Blaze (builderToByteString)
-import Blaze.ByteString.Builder (Builder)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Control
-import Control.Monad.Trans.Resource
-import Data.Default
-import qualified Data.IORef as I
 
 -- | Data type for OAuth client (consumer).
 --
@@ -378,9 +344,9 @@ genSign oa tok req =
       return $ BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
     RSASHA1 pr ->
 #if MIN_VERSION_RSA(2, 0, 0)
-      liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign hashSHA1 pr) (getBaseString tok req)
+      liftM (encode . toStrict . RSA.rsassa_pkcs1_v1_5_sign RSA.hashSHA1 pr) (getBaseString tok req)
 #else
-      liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign ha_SHA1 pr) (getBaseString tok req)
+      liftM (encode . toStrict . RSA.rsassa_pkcs1_v1_5_sign RSA.ha_SHA1 pr) (getBaseString tok req)
 #endif
 
 #if MIN_VERSION_http_conduit(2, 0, 0)
