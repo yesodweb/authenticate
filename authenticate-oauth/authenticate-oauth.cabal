@@ -1,5 +1,5 @@
 name:            authenticate-oauth
-version:         1.4.0.8
+version:         1.4.0.8.1
 license:         BSD3
 license-file:    LICENSE
 author:          Hiromi Ishii
@@ -27,10 +27,13 @@ library
                    , http-types                    >= 0.6
                    , blaze-builder
                    , conduit                       >= 0.4
-                   , resourcet                     >= 0.3      && < 0.5
+                   , resourcet                     >= 0.3
                    , blaze-builder-conduit         >= 0.4
                    , monad-control                 >= 0.3      && < 0.4
-    exposed-modules: Web.Authenticate.OAuth, Web.Authenticate.OAuth.IO
+                   , conduit-extra           >= 1.1.0.1
+    exposed-modules:   Web.Authenticate.OAuth
+                     , Web.Authenticate.OAuth.IO
+                     , Web.Authenticate.OAuth.UnsafeIO
     ghc-options:     -Wall
 
 source-repository head

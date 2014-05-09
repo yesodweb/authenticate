@@ -48,16 +48,17 @@ import           Network.HTTP.Types           (renderSimpleQuery, status200)
 import           Numeric
 import           System.Random
 #if MIN_VERSION_base(4,7,0)
-import Data.Data hiding (Proxy (..))
+import Data.Data hiding                       (Proxy (..))
 #else
 import Data.Data
+#endif
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import Data.Maybe
-import Network.HTTP.Types (parseSimpleQuery, SimpleQuery)
+import Network.HTTP.Types                     (parseSimpleQuery, SimpleQuery)
 import Control.Exception
 import Control.Monad
-import Data.List (sortBy)
+import Data.List                              (sortBy)
 import System.Random
 import Data.Char
 import Data.Digest.Pure.SHA
@@ -65,26 +66,28 @@ import Data.ByteString.Base64
 import Data.Time
 import Numeric
 #if MIN_VERSION_RSA(2, 0, 0)
-import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, hashSHA1)
+import Codec.Crypto.RSA                       (rsassa_pkcs1_v1_5_sign, hashSHA1)
 #else
-import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, ha_SHA1)
+import Codec.Crypto.RSA                       (rsassa_pkcs1_v1_5_sign, ha_SHA1)
 #endif
-import Crypto.Types.PubKey.RSA (PrivateKey(..), PublicKey(..))
-import Network.HTTP.Types (Header)
-import Blaze.ByteString.Builder (toByteString)
-import Control.Monad.IO.Class (MonadIO)
-import Network.HTTP.Types (renderSimpleQuery, status200)
-import Data.Conduit (($$), ($=), Source)
+import Crypto.Types.PubKey.RSA                (PrivateKey(..), PublicKey(..))
+import Network.HTTP.Types                     (Header)
+import Blaze.ByteString.Builder               (toByteString)
+import Network.HTTP.Types                     (renderSimpleQuery, status200)
+import Data.Conduit                           (($$), ($=), Source)
 import qualified Data.Conduit.List as CL
-import Data.Conduit.Blaze (builderToByteString)
-import Blaze.ByteString.Builder (Builder)
-import Control.Monad.IO.Class (liftIO)
+import Data.Conduit.Blaze                     (builderToByteString)
+import Blaze.ByteString.Builder               (Builder)
+import Control.Monad.Trans.Class              (lift)
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Resource
 import Data.Default
 import qualified Data.IORef as I
+import Web.Authenticate.OAuth.UnsafeIO
+
 
 -- | Data type for OAuth client (consumer).
+--
 --
 -- The constructor for this data type is not exposed.
 -- Instead, you should use the 'def' method or 'newOAuth' function to retrieve a default instance,
@@ -177,14 +180,14 @@ fromStrict :: BS.ByteString -> BSL.ByteString
 fromStrict = BSL.fromChunks . return
 
 -- | Get temporary credential for requesting acces token.
-getTemporaryCredential :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredential :: (MonadResource m, MonadBaseControl IO m, MonadUnsafeIO m)
                        => OAuth         -- ^ OAuth Application
                        -> Manager
                        -> m Credential -- ^ Temporary Credential (Request Token & Secret).
 getTemporaryCredential = getTemporaryCredential' id
 
 -- | Get temporary credential for requesting access token with Scope parameter.
-getTemporaryCredentialWithScope :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredentialWithScope :: (MonadResource m, MonadBaseControl IO m, MonadUnsafeIO m)
                                 => BS.ByteString -- ^ Scope parameter string
                                 -> OAuth         -- ^ OAuth Application
                                 -> Manager
@@ -200,14 +203,14 @@ addScope scope req | BS.null scope = req
                    | otherwise     = urlEncodedBody [("scope", scope)] req
 
 -- | Get temporary credential for requesting access token via the proxy.
-getTemporaryCredentialProxy :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredentialProxy :: (MonadResource m, MonadBaseControl IO m, MonadUnsafeIO m)
                             => Maybe Proxy   -- ^ Proxy
                             -> OAuth         -- ^ OAuth Application
                             -> Manager
                             -> m Credential -- ^ Temporary Credential (Request Token & Secret).
 getTemporaryCredentialProxy p oa m = getTemporaryCredential' (addMaybeProxy p) oa m
 
-getTemporaryCredential' :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredential' :: (MonadResource m, MonadBaseControl IO m, MonadUnsafeIO m)
 #if MIN_VERSION_http_conduit(2, 0, 0)
                         => (Request -> Request)       -- ^ Request Hook
 #else
@@ -250,7 +253,7 @@ authorizeUrl' f oa cr = oauthAuthorizeUri oa ++ BS.unpack (renderSimpleQuery Tru
 
 -- | Get Access token.
 getAccessToken, getTokenCredential
-               :: (MonadResource m, MonadBaseControl IO m)
+               :: (MonadResource m, MonadBaseControl IO m, MonadUnsafeIO m)
                => OAuth         -- ^ OAuth Application
                -> Credential    -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
                -> Manager
@@ -259,7 +262,7 @@ getAccessToken = getAccessToken' id
 
 -- | Get Access token via the proxy.
 getAccessTokenProxy, getTokenCredentialProxy
-               :: (MonadResource m, MonadBaseControl IO m)
+               :: (MonadResource m, MonadBaseControl IO m, MonadUnsafeIO m)
                => Maybe Proxy   -- ^ Proxy
                -> OAuth         -- ^ OAuth Application
                -> Credential    -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
@@ -267,7 +270,7 @@ getAccessTokenProxy, getTokenCredentialProxy
                -> m Credential -- ^ Token Credential (Access Token & Secret)
 getAccessTokenProxy p = getAccessToken' $ addMaybeProxy p
 
-getAccessToken' :: (MonadResource m, MonadBaseControl IO m)
+getAccessToken' :: (MonadResource m, MonadBaseControl IO m, MonadUnsafeIO m)
 #if MIN_VERSION_http_conduit(2, 0, 0)
                 => (Request -> Request)       -- ^ Request Hook
 #else
