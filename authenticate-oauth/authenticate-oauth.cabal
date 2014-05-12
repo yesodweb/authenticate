@@ -31,9 +31,10 @@ library
                    , blaze-builder-conduit         >= 0.4
                    , monad-control                 >= 0.3      && < 0.4
                    , conduit-extra           >= 1.1.0.1
+                   , primitive
+                   , transformers-base
     exposed-modules:   Web.Authenticate.OAuth
                      , Web.Authenticate.OAuth.IO
-                     , Web.Authenticate.OAuth.UnsafeIO
     ghc-options:     -Wall
 
 source-repository head
