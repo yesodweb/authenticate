@@ -52,11 +52,7 @@ getTemporaryCredentialProxy :: MonadIO m
 getTemporaryCredentialProxy p oa = liftIO $ withManager $ OA.getTemporaryCredential' (addMaybeProxy p) oa
 
 getTemporaryCredential' :: MonadIO m
-#if MIN_VERSION_http_conduit(2, 0, 0)
                         => (Request -> Request)                                 -- ^ Request Hook
-#else
-                        => (Request (ResourceT IO) -> Request (ResourceT IO))   -- ^ Request Hook
-#endif
                         -> OAuth                      -- ^ OAuth Application
                         -> m Credential -- ^ Temporary Credential (Request Token & Secret).
 getTemporaryCredential' hook oa = liftIO $ withManager $ OA.getTemporaryCredential' hook oa
@@ -80,11 +76,7 @@ getAccessTokenProxy, getTokenCredentialProxy
 getAccessTokenProxy p oa cr = liftIO $ withManager $ OA.getAccessTokenProxy p oa cr
 
 getAccessToken' :: MonadIO m
-#if MIN_VERSION_http_conduit(2, 0, 0)
                 => (Request -> Request)                                 -- ^ Request Hook
-#else
-                => (Request (ResourceT IO) -> Request (ResourceT IO))   -- ^ Request Hook
-#endif
                 -> OAuth                      -- ^ OAuth Application
                 -> Credential                 -- ^ Temporary Credential with oauth_verifier
                 -> m Credential     -- ^ Token Credential (Access Token & Secret)
