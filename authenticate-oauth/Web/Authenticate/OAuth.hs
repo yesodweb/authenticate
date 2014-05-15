@@ -24,8 +24,6 @@ import           Blaze.ByteString.Builder     (toByteString)
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
-import           Control.Monad.Trans.Control
-import           Control.Monad.Trans.Resource
 import           Crypto.Types.PubKey.RSA      (PrivateKey (..), PublicKey (..))
 import           Data.ByteString.Base64
 import qualified Data.ByteString.Char8        as BS
@@ -37,7 +35,7 @@ import qualified Data.IORef                   as I
 import           Data.List                    (sortBy)
 import           Data.Maybe
 import           Data.Time
-import           Network.HTTP.Conduit
+import           Network.HTTP.Client
 import           Network.HTTP.Types           (SimpleQuery, parseSimpleQuery)
 import           Network.HTTP.Types           (Header)
 import           Network.HTTP.Types           (renderSimpleQuery, status200)
@@ -143,14 +141,14 @@ fromStrict :: BS.ByteString -> BSL.ByteString
 fromStrict = BSL.fromChunks . return
 
 -- | Get temporary credential for requesting acces token.
-getTemporaryCredential :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredential :: MonadIO m
                        => OAuth         -- ^ OAuth Application
                        -> Manager
                        -> m Credential -- ^ Temporary Credential (Request Token & Secret).
 getTemporaryCredential = getTemporaryCredential' id
 
 -- | Get temporary credential for requesting access token with Scope parameter.
-getTemporaryCredentialWithScope :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredentialWithScope :: MonadIO m
                                 => BS.ByteString -- ^ Scope parameter string
                                 -> OAuth         -- ^ OAuth Application
                                 -> Manager
@@ -162,14 +160,14 @@ addScope scope req | BS.null scope = req
                    | otherwise     = urlEncodedBody [("scope", scope)] req
 
 -- | Get temporary credential for requesting access token via the proxy.
-getTemporaryCredentialProxy :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredentialProxy :: MonadIO m
                             => Maybe Proxy   -- ^ Proxy
                             -> OAuth         -- ^ OAuth Application
                             -> Manager
                             -> m Credential -- ^ Temporary Credential (Request Token & Secret).
 getTemporaryCredentialProxy p oa m = getTemporaryCredential' (addMaybeProxy p) oa m
 
-getTemporaryCredential' :: (MonadResource m, MonadBaseControl IO m)
+getTemporaryCredential' :: MonadIO m
                         => (Request -> Request)       -- ^ Request Hook
                         -> OAuth                      -- ^ OAuth Application
                         -> Manager
@@ -178,7 +176,7 @@ getTemporaryCredential' hook oa manager = do
   let req = fromJust $ parseUrl $ oauthRequestUri oa
       crd = maybe id (insert "oauth_callback") (oauthCallback oa) $ emptyCredential
   req' <- signOAuth oa crd $ hook (req { method = "POST" })
-  rsp <- httpLbs req' manager
+  rsp <- liftIO $ httpLbs req' manager
   if responseStatus rsp == status200
     then do
       let dic = parseSimpleQuery . toStrict . responseBody $ rsp
@@ -208,7 +206,7 @@ authorizeUrl' f oa cr = oauthAuthorizeUri oa ++ BS.unpack (renderSimpleQuery Tru
 
 -- | Get Access token.
 getAccessToken, getTokenCredential
-               :: (MonadResource m, MonadBaseControl IO m)
+               :: MonadIO m
                => OAuth         -- ^ OAuth Application
                -> Credential    -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
                -> Manager
@@ -217,7 +215,7 @@ getAccessToken = getAccessToken' id
 
 -- | Get Access token via the proxy.
 getAccessTokenProxy, getTokenCredentialProxy
-               :: (MonadResource m, MonadBaseControl IO m)
+               :: MonadIO m
                => Maybe Proxy   -- ^ Proxy
                -> OAuth         -- ^ OAuth Application
                -> Credential    -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
@@ -225,7 +223,7 @@ getAccessTokenProxy, getTokenCredentialProxy
                -> m Credential -- ^ Token Credential (Access Token & Secret)
 getAccessTokenProxy p = getAccessToken' $ addMaybeProxy p
 
-getAccessToken' :: (MonadResource m, MonadBaseControl IO m)
+getAccessToken' :: MonadIO m
                 => (Request -> Request)       -- ^ Request Hook
                 -> OAuth                      -- ^ OAuth Application
                 -> Credential                 -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
@@ -233,7 +231,7 @@ getAccessToken' :: (MonadResource m, MonadBaseControl IO m)
                 -> m Credential     -- ^ Token Credential (Access Token & Secret)
 getAccessToken' hook oa cr manager = do
   let req = hook (fromJust $ parseUrl $ oauthAccessTokenUri oa) { method = "POST" }
-  rsp <- flip httpLbs manager =<< signOAuth oa (if oauthVersion oa == OAuth10 then delete "oauth_verifier" cr else cr) req
+  rsp <- liftIO $ flip httpLbs manager =<< signOAuth oa (if oauthVersion oa == OAuth10 then delete "oauth_verifier" cr else cr) req
   if responseStatus rsp == status200
     then do
       let dic = parseSimpleQuery . toStrict . responseBody $ rsp
@@ -366,10 +364,6 @@ toLBS (RequestBodyBS s) = return s
 toLBS (RequestBodyBuilder _ b) = return $ toByteString b
 toLBS (RequestBodyStream _ givesPopper) = toLBS' givesPopper
 toLBS (RequestBodyStreamChunked givesPopper) = toLBS' givesPopper
-
-type Popper = IO BS.ByteString
-type NeedsPopper a = Popper -> IO a
-type GivesPopper a = NeedsPopper a -> IO a
 
 toLBS' :: MonadIO m => GivesPopper () -> m BS.ByteString
 toLBS' gp = liftIO $ do
