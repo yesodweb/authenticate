@@ -51,6 +51,7 @@ import           System.Random
 import Data.Data hiding (Proxy (..))
 #else
 import Data.Data
+#endif
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import Data.Maybe
