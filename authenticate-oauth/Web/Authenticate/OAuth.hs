@@ -23,8 +23,7 @@ module Web.Authenticate.OAuth
 import           Blaze.ByteString.Builder     (toByteString)
 import           Control.Exception
 import           Control.Monad
-import           Control.Monad.Base           (MonadBase(..))
-import           Control.Monad.IO.Class       (liftIO)
+import           Control.Monad.IO.Class       (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Resource
 import           Crypto.Types.PubKey.RSA      (PrivateKey (..), PublicKey (..))
@@ -271,7 +270,7 @@ injectVerifier :: BS.ByteString -> Credential -> Credential
 injectVerifier = insert "oauth_verifier"
 
 -- | Add OAuth headers & sign to 'Request'.
-signOAuth :: (MonadBase IO m)
+signOAuth :: (MonadIO m)
           => OAuth              -- ^ OAuth Application
           -> Credential         -- ^ Credential
           -> Request            -- ^ Original Request
@@ -296,14 +295,14 @@ showSigMtd PLAINTEXT = "PLAINTEXT"
 showSigMtd HMACSHA1  = "HMAC-SHA1"
 showSigMtd (RSASHA1 _) = "RSA-SHA1"
 
-addNonce :: MonadBase IO m => Credential -> m Credential
+addNonce :: MonadIO m => Credential -> m Credential
 addNonce cred = do
-  nonce <- liftBase $ replicateM 10 (randomRIO ('a','z')) -- FIXME very inefficient
+  nonce <- liftIO $ replicateM 10 (randomRIO ('a','z')) -- FIXME very inefficient
   return $ insert "oauth_nonce" (BS.pack nonce) cred
 
-addTimeStamp :: MonadBase IO m => Credential -> m Credential
+addTimeStamp :: MonadIO m => Credential -> m Credential
 addTimeStamp cred = do
-  stamp <- (floor . (`diffUTCTime` baseTime)) `liftM` liftBase getCurrentTime
+  stamp <- (floor . (`diffUTCTime` baseTime)) `liftM` liftIO getCurrentTime
   return $ insert "oauth_timestamp" (BS.pack $ show (stamp :: Integer)) cred
 
 injectOAuthToCred :: OAuth -> Credential -> Credential
@@ -313,7 +312,7 @@ injectOAuthToCred oa cred =
             , ("oauth_version", "1.0")
             ] cred
 
-genSign :: MonadBase IO m => OAuth -> Credential -> Request -> m BS.ByteString
+genSign :: MonadIO m => OAuth -> Credential -> Request -> m BS.ByteString
 genSign oa tok req =
   case oauthSignatureMethod oa of
     HMACSHA1 -> do
@@ -341,7 +340,7 @@ paramEncode = BS.concatMap escape
                                oct = '%' : replicate (2 - length num) '0' ++ num
                            in BS.pack oct
 
-getBaseString :: MonadBase IO m => Credential -> Request -> m BSL.ByteString
+getBaseString :: MonadIO m => Credential -> Request -> m BSL.ByteString
 getBaseString tok req = do
   let bsMtd  = BS.map toUpper $ method req
       isHttps = secure req
@@ -361,7 +360,7 @@ getBaseString tok req = do
   -- So this is OK.
   return $ BSL.intercalate "&" $ map (fromStrict.paramEncode) [bsMtd, bsURI, bsParams]
 
-toLBS :: MonadBase IO m => RequestBody -> m BS.ByteString
+toLBS :: MonadIO m => RequestBody -> m BS.ByteString
 toLBS (RequestBodyLBS l) = return $ toStrict l
 toLBS (RequestBodyBS s) = return s
 toLBS (RequestBodyBuilder _ b) = return $ toByteString b
@@ -372,8 +371,8 @@ type Popper = IO BS.ByteString
 type NeedsPopper a = Popper -> IO a
 type GivesPopper a = NeedsPopper a -> IO a
 
-toLBS' :: MonadBase IO m => GivesPopper () -> m BS.ByteString
-toLBS' gp = liftBase $ do
+toLBS' :: MonadIO m => GivesPopper () -> m BS.ByteString
+toLBS' gp = liftIO $ do
     ref <- I.newIORef BS.empty
     gp (go ref)
     I.readIORef ref
