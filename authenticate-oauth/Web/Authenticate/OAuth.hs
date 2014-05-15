@@ -66,11 +66,7 @@ import Data.Digest.Pure.SHA
 import Data.ByteString.Base64
 import Data.Time
 import Numeric
-#if MIN_VERSION_RSA(2, 0, 0)
 import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, hashSHA1)
-#else
-import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, ha_SHA1)
-#endif
 import Crypto.Types.PubKey.RSA (PrivateKey(..), PublicKey(..))
 import Network.HTTP.Types (Header)
 import Blaze.ByteString.Builder (toByteString)
@@ -358,11 +354,7 @@ genSign oa tok req =
     PLAINTEXT ->
       return $ BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
     RSASHA1 pr ->
-#if MIN_VERSION_RSA(2, 0, 0)
       liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign hashSHA1 pr) (getBaseString tok req)
-#else
-      liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign ha_SHA1 pr) (getBaseString tok req)
-#endif
 
 addAuthHeader :: BS.ByteString -> Credential -> Request -> Request
 addAuthHeader prefix (Credential cred) req =

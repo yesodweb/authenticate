@@ -19,7 +19,7 @@ library
                    , transformers-base
                    , bytestring                    >= 0.9
                    , crypto-pubkey-types           >= 0.1      && < 0.5
-                   , RSA                           >= 1.2      && < 2.1
+                   , RSA                           == 2.0.*
                    , time
                    , data-default
                    , base64-bytestring             >= 0.1      && < 1.1
