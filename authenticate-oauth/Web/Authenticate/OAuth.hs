@@ -20,12 +20,11 @@ module Web.Authenticate.OAuth
       -- * Utility Methods
       paramEncode, addScope, addMaybeProxy
     ) where
-import           Blaze.ByteString.Builder     (toByteString, Builder)
-import qualified Codec.Crypto.RSA             as RSA
+import           Blaze.ByteString.Builder     (toByteString)
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.Base           (MonadBase(..))
-import           Control.Monad.IO.Class       (MonadIO, liftIO)
+import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Resource
 import           Crypto.Types.PubKey.RSA      (PrivateKey (..), PublicKey (..))
@@ -33,9 +32,6 @@ import           Data.ByteString.Base64
 import qualified Data.ByteString.Char8        as BS
 import qualified Data.ByteString.Lazy.Char8   as BSL
 import           Data.Char
-import           Data.Conduit                 (Source, ($$), ($=))
-import           Data.Conduit.Blaze           (builderToByteString)
-import qualified Data.Conduit.List            as CL
 import           Data.Default
 import           Data.Digest.Pure.SHA
 import qualified Data.IORef                   as I
@@ -53,34 +49,7 @@ import Data.Data hiding (Proxy (..))
 #else
 import Data.Data
 #endif
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy.Char8 as BSL
-import Data.Maybe
-import Network.HTTP.Types (parseSimpleQuery, SimpleQuery)
-import Control.Exception
-import Control.Monad
-import Data.List (sortBy)
-import System.Random
-import Data.Char
-import Data.Digest.Pure.SHA
-import Data.ByteString.Base64
-import Data.Time
-import Numeric
 import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, hashSHA1)
-import Crypto.Types.PubKey.RSA (PrivateKey(..), PublicKey(..))
-import Network.HTTP.Types (Header)
-import Blaze.ByteString.Builder (toByteString)
-import Control.Monad.IO.Class (MonadIO)
-import Network.HTTP.Types (renderSimpleQuery, status200)
-import Data.Conduit (($$), ($=), Source)
-import qualified Data.Conduit.List as CL
-import Data.Conduit.Blaze (builderToByteString)
-import Blaze.ByteString.Builder (Builder)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Control
-import Control.Monad.Trans.Resource
-import Data.Default
-import qualified Data.IORef as I
 
 -- | Data type for OAuth client (consumer).
 --
