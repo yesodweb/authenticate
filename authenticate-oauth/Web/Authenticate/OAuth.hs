@@ -24,6 +24,7 @@ import           Blaze.ByteString.Builder     (toByteString, Builder)
 import qualified Codec.Crypto.RSA             as RSA
 import           Control.Exception
 import           Control.Monad
+import           Control.Monad.Base           (MonadBase(..))
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Resource
@@ -317,7 +318,7 @@ injectVerifier :: BS.ByteString -> Credential -> Credential
 injectVerifier = insert "oauth_verifier"
 
 -- | Add OAuth headers & sign to 'Request'.
-signOAuth :: (MonadUnsafeIO m)
+signOAuth :: (MonadBase IO m)
           => OAuth              -- ^ OAuth Application
           -> Credential         -- ^ Credential
 #if MIN_VERSION_http_conduit(2, 0, 0)
@@ -347,14 +348,14 @@ showSigMtd PLAINTEXT = "PLAINTEXT"
 showSigMtd HMACSHA1  = "HMAC-SHA1"
 showSigMtd (RSASHA1 _) = "RSA-SHA1"
 
-addNonce :: MonadUnsafeIO m => Credential -> m Credential
+addNonce :: MonadBase IO m => Credential -> m Credential
 addNonce cred = do
-  nonce <- unsafeLiftIO $ replicateM 10 (randomRIO ('a','z')) -- FIXME very inefficient
+  nonce <- liftBase $ replicateM 10 (randomRIO ('a','z')) -- FIXME very inefficient
   return $ insert "oauth_nonce" (BS.pack nonce) cred
 
-addTimeStamp :: MonadUnsafeIO m => Credential -> m Credential
+addTimeStamp :: MonadBase IO m => Credential -> m Credential
 addTimeStamp cred = do
-  stamp <- (floor . (`diffUTCTime` baseTime)) `liftM` unsafeLiftIO getCurrentTime
+  stamp <- (floor . (`diffUTCTime` baseTime)) `liftM` liftBase getCurrentTime
   return $ insert "oauth_timestamp" (BS.pack $ show (stamp :: Integer)) cred
 
 injectOAuthToCred :: OAuth -> Credential -> Credential
@@ -365,9 +366,9 @@ injectOAuthToCred oa cred =
             ] cred
 
 #if MIN_VERSION_http_conduit(2, 0, 0)
-genSign :: MonadUnsafeIO m => OAuth -> Credential -> Request -> m BS.ByteString
+genSign :: MonadBase IO m => OAuth -> Credential -> Request -> m BS.ByteString
 #else
-genSign :: MonadUnsafeIO m => OAuth -> Credential -> Request m -> m BS.ByteString
+genSign :: MonadBase IO m => OAuth -> Credential -> Request m -> m BS.ByteString
 #endif
 genSign oa tok req =
   case oauthSignatureMethod oa of
@@ -405,9 +406,9 @@ paramEncode = BS.concatMap escape
                            in BS.pack oct
 
 #if MIN_VERSION_http_conduit(2, 0, 0)
-getBaseString :: MonadUnsafeIO m => Credential -> Request -> m BSL.ByteString
+getBaseString :: MonadBase IO m => Credential -> Request -> m BSL.ByteString
 #else
-getBaseString :: MonadUnsafeIO m => Credential -> Request m -> m BSL.ByteString
+getBaseString :: MonadBase IO m => Credential -> Request m -> m BSL.ByteString
 #endif
 getBaseString tok req = do
   let bsMtd  = BS.map toUpper $ method req
@@ -429,7 +430,7 @@ getBaseString tok req = do
   return $ BSL.intercalate "&" $ map (fromStrict.paramEncode) [bsMtd, bsURI, bsParams]
 
 #if MIN_VERSION_http_conduit(2, 0, 0)
-toLBS :: MonadUnsafeIO m => RequestBody -> m BS.ByteString
+toLBS :: MonadBase IO m => RequestBody -> m BS.ByteString
 toLBS (RequestBodyLBS l) = return $ toStrict l
 toLBS (RequestBodyBS s) = return s
 toLBS (RequestBodyBuilder _ b) = return $ toByteString b
@@ -440,9 +441,8 @@ type Popper = IO BS.ByteString
 type NeedsPopper a = Popper -> IO a
 type GivesPopper a = NeedsPopper a -> IO a
 
-toLBS' :: MonadUnsafeIO m => GivesPopper () -> m BS.ByteString
--- FIXME probably shouldn't be using MonadUnsafeIO
-toLBS' gp = unsafeLiftIO $ do
+toLBS' :: MonadBase IO m => GivesPopper () -> m BS.ByteString
+toLBS' gp = liftBase $ do
     ref <- I.newIORef BS.empty
     gp (go ref)
     I.readIORef ref
@@ -456,14 +456,14 @@ toLBS' gp = unsafeLiftIO $ do
                 then I.writeIORef ref $ BS.concat $ front []
                 else loop (front . (bs:))
 #else
-toLBS :: MonadUnsafeIO m => RequestBody m -> m BS.ByteString
+toLBS :: MonadBase IO m => RequestBody m -> m BS.ByteString
 toLBS (RequestBodyLBS l) = return $ toStrict l
 toLBS (RequestBodyBS s) = return s
 toLBS (RequestBodyBuilder _ b) = return $ toByteString b
 toLBS (RequestBodySource _ src) = toLBS' src
 toLBS (RequestBodySourceChunked src) = toLBS' src
 
-toLBS' :: MonadUnsafeIO m => Source m Builder -> m BS.ByteString
+toLBS' :: MonadBase IO m => Source m Builder -> m BS.ByteString
 toLBS' src = liftM BS.concat $ src $= builderToByteString $$ CL.consume
 #endif
 
