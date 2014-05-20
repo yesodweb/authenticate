@@ -348,7 +348,7 @@ getBaseString tok req = do
       bsURI = BS.concat [scheme, "://", host req, bsPort, path req]
       bsQuery = parseSimpleQuery $ queryString req
   bsBodyQ <- if isBodyFormEncoded $ requestHeaders req
-                  then liftM parseSimpleQuery $ toLBS (requestBody req)
+                  then liftM parseSimpleQuery $ toBS (requestBody req)
                   else return []
   let bsAuthParams = filter ((`elem`["oauth_consumer_key","oauth_token", "oauth_version","oauth_signature_method","oauth_timestamp", "oauth_nonce", "oauth_verifier", "oauth_version","oauth_callback"]).fst) $ unCredential tok
       allParams = bsQuery++bsBodyQ++bsAuthParams
@@ -358,15 +358,15 @@ getBaseString tok req = do
   -- So this is OK.
   return $ BSL.intercalate "&" $ map (fromStrict.paramEncode) [bsMtd, bsURI, bsParams]
 
-toLBS :: MonadIO m => RequestBody -> m BS.ByteString
-toLBS (RequestBodyLBS l) = return $ toStrict l
-toLBS (RequestBodyBS s) = return s
-toLBS (RequestBodyBuilder _ b) = return $ toByteString b
-toLBS (RequestBodyStream _ givesPopper) = toLBS' givesPopper
-toLBS (RequestBodyStreamChunked givesPopper) = toLBS' givesPopper
+toBS :: MonadIO m => RequestBody -> m BS.ByteString
+toBS (RequestBodyLBS l) = return $ toStrict l
+toBS (RequestBodyBS s) = return s
+toBS (RequestBodyBuilder _ b) = return $ toByteString b
+toBS (RequestBodyStream _ givesPopper) = toBS' givesPopper
+toBS (RequestBodyStreamChunked givesPopper) = toBS' givesPopper
 
-toLBS' :: MonadIO m => GivesPopper () -> m BS.ByteString
-toLBS' gp = liftIO $ do
+toBS' :: MonadIO m => GivesPopper () -> m BS.ByteString
+toBS' gp = liftIO $ do
     ref <- I.newIORef BS.empty
     gp (go ref)
     I.readIORef ref
