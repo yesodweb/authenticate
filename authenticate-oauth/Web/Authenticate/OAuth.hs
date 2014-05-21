@@ -1,6 +1,5 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, FlexibleContexts, MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings, StandaloneDeriving                            #-}
-{-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 module Web.Authenticate.OAuth
     ( -- * Data types
       OAuth, def, newOAuth, oauthServerName, oauthRequestUri, oauthAccessTokenUri,
