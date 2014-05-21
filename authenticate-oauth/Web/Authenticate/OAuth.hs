@@ -11,14 +11,21 @@ module Web.Authenticate.OAuth
       -- * Signature
       signOAuth, genSign,
       -- * Url & operation for authentication
-      authorizeUrl, authorizeUrl', getAccessToken, getTemporaryCredential,
-      getTokenCredential, getTemporaryCredentialWithScope,
-      getAccessTokenProxy, getTemporaryCredentialProxy,
+      -- ** Temporary credentials
+      getTemporaryCredential, getTemporaryCredentialWithScope,
+      getTemporaryCredentialProxy, getTemporaryCredential',
+      -- ** Authorization URL
+      authorizeUrl, authorizeUrl',
+      -- ** Finishing authentication
+      getAccessToken,
+      getAccessTokenProxy,
+      getTokenCredential,
       getTokenCredentialProxy,
-      getAccessToken', getTemporaryCredential',
+      getAccessToken',
       -- * Utility Methods
       paramEncode, addScope, addMaybeProxy
     ) where
+
 import           Blaze.ByteString.Builder     (toByteString)
 import           Control.Exception
 import           Control.Monad
@@ -46,6 +53,11 @@ import Data.Data hiding (Proxy (..))
 import Data.Data
 #endif
 import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, hashSHA1)
+
+
+----------------------------------------------------------------------
+-- Data types
+
 
 -- | Data type for OAuth client (consumer).
 --
@@ -80,9 +92,11 @@ data OAuth = OAuth { oauthServerName      :: String -- ^ Service name (default: 
                    -- ^ OAuth spec version (default: 'OAuth10a')
                    } deriving (Show, Eq, Read, Data, Typeable)
 
+
 data OAuthVersion = OAuth10     -- ^ OAuth protocol ver 1.0 (no oauth_verifier; differs from RFC 5849).
                   | OAuth10a    -- ^ OAuth protocol ver 1.0a. This corresponds to community's 1.0a spec and RFC 5849.
                     deriving (Show, Eq, Enum, Ord, Data, Typeable, Read)
+
 
 -- | Default value for OAuth datatype.
 -- You must specify at least oauthServerName, URIs and Tokens.
@@ -102,19 +116,28 @@ newOAuth = OAuth { oauthSignatureMethod = HMACSHA1
 instance Default OAuth where
   def = newOAuth
 
+
 -- | Data type for signature method.
 data SignMethod = PLAINTEXT
                 | HMACSHA1
                 | RSASHA1 PrivateKey
                   deriving (Show, Eq, Read, Data, Typeable)
 
+
+data OAuthException = OAuthException String
+                      deriving (Show, Eq, Data, Typeable)
+
+instance Exception OAuthException
+
+
+----------------------------------------------------------------------
+-- Credentials
+
+
 -- | Data type for redential.
 data Credential = Credential { unCredential :: [(BS.ByteString, BS.ByteString)] }
                   deriving (Show, Eq, Ord, Read, Data, Typeable)
 
--- | Empty credential.
-emptyCredential :: Credential
-emptyCredential = Credential []
 
 -- | Convenient function to create 'Credential' with OAuth Token and Token Secret.
 newCredential :: BS.ByteString -- ^ value for oauth_token
@@ -122,20 +145,74 @@ newCredential :: BS.ByteString -- ^ value for oauth_token
               -> Credential
 newCredential tok sec = Credential [("oauth_token", tok), ("oauth_token_secret", sec)]
 
-token, tokenSecret :: Credential -> BS.ByteString
-token = fromMaybe "" . lookup "oauth_token" . unCredential
-tokenSecret = fromMaybe "" . lookup "oauth_token_secret" . unCredential
 
-data OAuthException = OAuthException String
-                      deriving (Show, Eq, Data, Typeable)
+-- | Empty credential.
+emptyCredential :: Credential
+emptyCredential = Credential []
 
-instance Exception OAuthException
 
-toStrict :: BSL.ByteString -> BS.ByteString
-toStrict = BS.concat . BSL.toChunks
+-- | Insert an oauth parameter into given 'Credential'.
+insert :: BS.ByteString -- ^ Parameter Name
+       -> BS.ByteString -- ^ Value
+       -> Credential    -- ^ Credential
+       -> Credential    -- ^ Result
+insert k v = Credential . insertMap k v . unCredential
 
-fromStrict :: BS.ByteString -> BSL.ByteString
-fromStrict = BSL.fromChunks . return
+
+-- | Convenient method for inserting multiple parameters into credential.
+inserts :: [(BS.ByteString, BS.ByteString)] -> Credential -> Credential
+inserts = flip $ foldr (uncurry insert)
+
+
+-- | Remove an oauth parameter for key from given 'Credential'.
+delete :: BS.ByteString -- ^ Parameter name
+       -> Credential    -- ^ Credential
+       -> Credential    -- ^ Result
+delete key = Credential . deleteMap key . unCredential
+
+
+-- | Insert @oauth-verifier@ on a 'Credential'.
+injectVerifier :: BS.ByteString -> Credential -> Credential
+injectVerifier = insert "oauth_verifier"
+
+
+----------------------------------------------------------------------
+-- Signature
+
+-- | Add OAuth headers & sign to 'Request'.
+signOAuth :: MonadIO m
+          => OAuth              -- ^ OAuth Application
+          -> Credential         -- ^ Credential
+          -> Request            -- ^ Original Request
+          -> m Request          -- ^ Signed OAuth Request
+signOAuth oa crd req = do
+  crd' <- addTimeStamp =<< addNonce crd
+  let tok = injectOAuthToCred oa crd'
+  sign <- genSign oa tok req
+  return $ addAuthHeader prefix (insert "oauth_signature" sign tok) req
+  where
+    prefix = case oauthRealm oa of
+      Nothing -> "OAuth "
+      Just v  -> "OAuth realm=\"" `BS.append` v `BS.append` "\","
+
+
+-- | Generate OAuth signature.  Used by 'signOAuth'.
+genSign :: MonadIO m => OAuth -> Credential -> Request -> m BS.ByteString
+genSign oa tok req =
+  case oauthSignatureMethod oa of
+    HMACSHA1 -> do
+      text <- getBaseString tok req
+      let key  = BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
+      return $ encode $ toStrict $ bytestringDigest $ hmacSha1 (fromStrict key) text
+    PLAINTEXT ->
+      return $ BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
+    RSASHA1 pr ->
+      liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign hashSHA1 pr) (getBaseString tok req)
+
+
+----------------------------------------------------------------------
+-- Temporary credentails
+
 
 -- | Get temporary credential for requesting acces token.
 getTemporaryCredential :: MonadIO m
@@ -143,6 +220,7 @@ getTemporaryCredential :: MonadIO m
                        -> Manager
                        -> m Credential -- ^ Temporary Credential (Request Token & Secret).
 getTemporaryCredential = getTemporaryCredential' id
+
 
 -- | Get temporary credential for requesting access token with Scope parameter.
 getTemporaryCredentialWithScope :: MonadIO m
@@ -152,9 +230,6 @@ getTemporaryCredentialWithScope :: MonadIO m
                                 -> m Credential -- ^ Temporay Credential (Request Token & Secret).
 getTemporaryCredentialWithScope bs = getTemporaryCredential' (addScope bs)
 
-addScope :: BS.ByteString -> Request -> Request
-addScope scope req | BS.null scope = req
-                   | otherwise     = urlEncodedBody [("scope", scope)] req
 
 -- | Get temporary credential for requesting access token via the proxy.
 getTemporaryCredentialProxy :: MonadIO m
@@ -163,6 +238,7 @@ getTemporaryCredentialProxy :: MonadIO m
                             -> Manager
                             -> m Credential -- ^ Temporary Credential (Request Token & Secret).
 getTemporaryCredentialProxy p oa m = getTemporaryCredential' (addMaybeProxy p) oa m
+
 
 getTemporaryCredential' :: MonadIO m
                         => (Request -> Request)       -- ^ Request Hook
@@ -180,11 +256,17 @@ getTemporaryCredential' hook oa manager = do
       return $ Credential dic
     else liftIO . throwIO . OAuthException $ "Gaining OAuth Temporary Credential Failed: " ++ BSL.unpack (responseBody rsp)
 
+
+----------------------------------------------------------------------
+-- Authorization URL
+
+
 -- | URL to obtain OAuth verifier.
 authorizeUrl :: OAuth           -- ^ OAuth Application
              -> Credential      -- ^ Temporary Credential (Request Token & Secret)
              -> String          -- ^ URL to authorize
 authorizeUrl = authorizeUrl' $ \oa -> const [("oauth_consumer_key", oauthConsumerKey oa)]
+
 
 -- | Convert OAuth and Credential to URL to authorize.
 --   This takes function to choice parameter to pass to the server other than
@@ -201,6 +283,10 @@ authorizeUrl' f oa cr = oauthAuthorizeUri oa ++ BS.unpack (renderSimpleQuery Tru
             Just callback -> ("oauth_callback", callback):fixed
 
 
+----------------------------------------------------------------------
+-- Finishing authentication
+
+
 -- | Get Access token.
 getAccessToken, getTokenCredential
                :: MonadIO m
@@ -209,6 +295,7 @@ getAccessToken, getTokenCredential
                -> Manager
                -> m Credential -- ^ Token Credential (Access Token & Secret)
 getAccessToken = getAccessToken' id
+
 
 -- | Get Access token via the proxy.
 getAccessTokenProxy, getTokenCredentialProxy
@@ -219,6 +306,7 @@ getAccessTokenProxy, getTokenCredentialProxy
                -> Manager
                -> m Credential -- ^ Token Credential (Access Token & Secret)
 getAccessTokenProxy p = getAccessToken' $ addMaybeProxy p
+
 
 getAccessToken' :: MonadIO m
                 => (Request -> Request)       -- ^ Request Hook
@@ -238,47 +326,6 @@ getAccessToken' hook oa cr manager = do
 getTokenCredential = getAccessToken
 getTokenCredentialProxy = getAccessTokenProxy
 
-insertMap :: Eq a => a -> b -> [(a,b)] -> [(a,b)]
-insertMap key val = ((key,val):) . filter ((/=key).fst)
-
-deleteMap :: Eq a => a -> [(a,b)] -> [(a,b)]
-deleteMap k = filter ((/=k).fst)
-
--- | Insert an oauth parameter into given 'Credential'.
-insert :: BS.ByteString -- ^ Parameter Name
-       -> BS.ByteString -- ^ Value
-       -> Credential    -- ^ Credential
-       -> Credential    -- ^ Result
-insert k v = Credential . insertMap k v . unCredential
-
--- | Convenient method for inserting multiple parameters into credential.
-inserts :: [(BS.ByteString, BS.ByteString)] -> Credential -> Credential
-inserts = flip $ foldr (uncurry insert)
-
--- | Remove an oauth parameter for key from given 'Credential'.
-delete :: BS.ByteString -- ^ Parameter name
-       -> Credential    -- ^ Credential
-       -> Credential    -- ^ Result
-delete key = Credential . deleteMap key . unCredential
-
-injectVerifier :: BS.ByteString -> Credential -> Credential
-injectVerifier = insert "oauth_verifier"
-
--- | Add OAuth headers & sign to 'Request'.
-signOAuth :: (MonadIO m)
-          => OAuth              -- ^ OAuth Application
-          -> Credential         -- ^ Credential
-          -> Request            -- ^ Original Request
-          -> m Request          -- ^ Signed OAuth Request
-signOAuth oa crd req = do
-  crd' <- addTimeStamp =<< addNonce crd
-  let tok = injectOAuthToCred oa crd'
-  sign <- genSign oa tok req
-  return $ addAuthHeader prefix (insert "oauth_signature" sign tok) req
-  where
-    prefix = case oauthRealm oa of
-      Nothing -> "OAuth "
-      Just v  -> "OAuth realm=\"" `BS.append` v `BS.append` "\","
 
 baseTime :: UTCTime
 baseTime = UTCTime day 0
@@ -307,17 +354,6 @@ injectOAuthToCred oa cred =
             , ("oauth_version", "1.0")
             ] cred
 
-genSign :: MonadIO m => OAuth -> Credential -> Request -> m BS.ByteString
-genSign oa tok req =
-  case oauthSignatureMethod oa of
-    HMACSHA1 -> do
-      text <- getBaseString tok req
-      let key  = BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
-      return $ encode $ toStrict $ bytestringDigest $ hmacSha1 (fromStrict key) text
-    PLAINTEXT ->
-      return $ BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
-    RSASHA1 pr ->
-      liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign hashSHA1 pr) (getBaseString tok req)
 
 addAuthHeader :: BS.ByteString -> Credential -> Request -> Request
 addAuthHeader prefix (Credential cred) req =
@@ -325,15 +361,6 @@ addAuthHeader prefix (Credential cred) req =
 
 renderAuthHeader :: BS.ByteString -> [(BS.ByteString, BS.ByteString)] -> BS.ByteString
 renderAuthHeader prefix = (prefix `BS.append`). BS.intercalate "," . map (\(a,b) -> BS.concat [paramEncode a, "=\"",  paramEncode b, "\""]) . filter ((`elem` ["oauth_token", "oauth_verifier", "oauth_consumer_key", "oauth_signature_method", "oauth_timestamp", "oauth_nonce", "oauth_version", "oauth_callback", "oauth_signature"]) . fst)
-
--- | Encode a string using the percent encoding method for OAuth.
-paramEncode :: BS.ByteString -> BS.ByteString
-paramEncode = BS.concatMap escape
-  where
-    escape c | isAscii c && (isAlpha c || isDigit c || c `elem` "-._~") = BS.singleton c
-             | otherwise = let num = map toUpper $ showHex (ord c) ""
-                               oct = '%' : replicate (2 - length num) '0' ++ num
-                           in BS.pack oct
 
 getBaseString :: MonadIO m => Credential -> Request -> m BSL.ByteString
 getBaseString tok req = do
@@ -354,6 +381,48 @@ getBaseString tok req = do
   -- parameter encoding method in OAuth is slight different from ordinary one.
   -- So this is OK.
   return $ BSL.intercalate "&" $ map (fromStrict.paramEncode) [bsMtd, bsURI, bsParams]
+
+
+----------------------------------------------------------------------
+-- Utilities
+
+-- | Encode a string using the percent encoding method for OAuth.
+paramEncode :: BS.ByteString -> BS.ByteString
+paramEncode = BS.concatMap escape
+  where
+    escape c | isAscii c && (isAlpha c || isDigit c || c `elem` "-._~") = BS.singleton c
+             | otherwise = let num = map toUpper $ showHex (ord c) ""
+                               oct = '%' : replicate (2 - length num) '0' ++ num
+                           in BS.pack oct
+
+
+addScope :: BS.ByteString -> Request -> Request
+addScope scope req | BS.null scope = req
+                   | otherwise     = urlEncodedBody [("scope", scope)] req
+
+
+token, tokenSecret :: Credential -> BS.ByteString
+token = fromMaybe "" . lookup "oauth_token" . unCredential
+tokenSecret = fromMaybe "" . lookup "oauth_token_secret" . unCredential
+
+
+addMaybeProxy :: Maybe Proxy -> Request -> Request
+addMaybeProxy p req = req { proxy = p }
+
+
+insertMap :: Eq a => a -> b -> [(a,b)] -> [(a,b)]
+insertMap key val = ((key,val):) . filter ((/=key).fst)
+
+deleteMap :: Eq a => a -> [(a,b)] -> [(a,b)]
+deleteMap k = filter ((/=k).fst)
+
+
+toStrict :: BSL.ByteString -> BS.ByteString
+toStrict = BS.concat . BSL.toChunks
+
+fromStrict :: BS.ByteString -> BSL.ByteString
+fromStrict = BSL.fromChunks . return
+
 
 toBS :: MonadIO m => RequestBody -> m BS.ByteString
 toBS (RequestBodyLBS l) = return $ toStrict l
@@ -377,8 +446,6 @@ toBS' gp = liftIO $ do
                 then I.writeIORef ref $ BS.concat $ front []
                 else loop (front . (bs:))
 
+
 isBodyFormEncoded :: [Header] -> Bool
 isBodyFormEncoded = maybe False (=="application/x-www-form-urlencoded") . lookup "Content-Type"
-
-addMaybeProxy :: Maybe Proxy -> Request -> Request
-addMaybeProxy p req = req { proxy = p }
