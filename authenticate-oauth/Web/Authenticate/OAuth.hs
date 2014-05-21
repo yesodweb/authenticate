@@ -79,11 +79,11 @@ data OAuth = OAuth { oauthServerName      :: String -- ^ Service name (default: 
                    -- ^ Optional authorization realm (default: @Nothing@)
                    , oauthVersion         :: OAuthVersion
                    -- ^ OAuth spec version (default: 'OAuth10a')
-                   } deriving (Show, Eq, Ord, Read, Data, Typeable)
+                   } deriving (Show, Eq, Read, Data, Typeable)
 
 data OAuthVersion = OAuth10     -- ^ OAuth protocol ver 1.0 (no oauth_verifier; differs from RFC 5849).
                   | OAuth10a    -- ^ OAuth protocol ver 1.0a. This corresponds to community's 1.0a spec and RFC 5849.
-                    deriving (Show, Eq, Ord, Data, Typeable, Read)
+                    deriving (Show, Eq, Enum, Ord, Data, Typeable, Read)
 
 -- | Default value for OAuth datatype.
 -- You must specify at least oauthServerName, URIs and Tokens.
@@ -107,9 +107,7 @@ instance Default OAuth where
 data SignMethod = PLAINTEXT
                 | HMACSHA1
                 | RSASHA1 PrivateKey
-                  deriving (Show, Eq, Ord, Read, Data, Typeable)
-deriving instance Ord PrivateKey
-deriving instance Ord PublicKey
+                  deriving (Show, Eq, Read, Data, Typeable)
 
 -- | Data type for redential.
 data Credential = Credential { unCredential :: [(BS.ByteString, BS.ByteString)] }
