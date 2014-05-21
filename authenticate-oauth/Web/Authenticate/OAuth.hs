@@ -31,7 +31,7 @@ import           Data.Char
 import           Data.Default
 import           Data.Digest.Pure.SHA
 import qualified Data.IORef                   as I
-import           Data.List                    (sortBy)
+import           Data.List                    (sort)
 import           Data.Maybe
 import           Data.Time
 import           Network.HTTP.Client
@@ -349,7 +349,7 @@ getBaseString tok req = do
                   else return []
   let bsAuthParams = filter ((`elem`["oauth_consumer_key","oauth_token", "oauth_version","oauth_signature_method","oauth_timestamp", "oauth_nonce", "oauth_verifier", "oauth_version","oauth_callback"]).fst) $ unCredential tok
       allParams = bsQuery++bsBodyQ++bsAuthParams
-      bsParams = BS.intercalate "&" $ map (\(a,b)->BS.concat[a,"=",b]) $ sortBy compareTuple
+      bsParams = BS.intercalate "&" $ map (\(a,b)->BS.concat[a,"=",b]) $ sort
                    $ map (\(a,b) -> (paramEncode a,paramEncode b)) allParams
   -- parameter encoding method in OAuth is slight different from ordinary one.
   -- So this is OK.
@@ -379,13 +379,6 @@ toBS' gp = liftIO $ do
 
 isBodyFormEncoded :: [Header] -> Bool
 isBodyFormEncoded = maybe False (=="application/x-www-form-urlencoded") . lookup "Content-Type"
-
-compareTuple :: (Ord a, Ord b) => (a, b) -> (a, b) -> Ordering
-compareTuple (a,b) (c,d) =
-  case compare a c of
-    LT -> LT
-    EQ -> compare b d
-    GT -> GT
 
 addMaybeProxy :: Maybe Proxy -> Request -> Request
 addMaybeProxy p req = req { proxy = p }
