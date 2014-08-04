@@ -49,7 +49,7 @@ getForwardUrl
     -> m Text -- ^ URL to send the user to.
 getForwardUrl openid' complete mrealm params manager = do
     let realm = fromMaybe complete mrealm
-    claimed <- normalize openid'
+    claimed <- normalize $ T.strip openid'
     disc <- discover claimed manager
     let helper s q = return $ T.concat
             [ s
