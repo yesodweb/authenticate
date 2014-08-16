@@ -1,5 +1,5 @@
 name:            authenticate
-version:         1.3.2.9
+version:         1.3.2.10
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman, Hiromi Ishii, Arash Rouhani
@@ -15,13 +15,16 @@ cabal-version:   >= 1.6
 build-type:      Simple
 homepage:        http://github.com/yesodweb/authenticate
 
+flag network-uri
+  description: Get Network.URI from the network-uri package
+  default: True
+
 library
     build-depends:   base                          >= 4        && < 5
                    , aeson                         >= 0.5
                    , http-conduit                  >= 1.5
                    , transformers                  >= 0.1
                    , bytestring                    >= 0.9
-                   , network
                    , case-insensitive              >= 0.2
                    , text
                    , http-types                    >= 0.6
@@ -44,6 +47,11 @@ library
                      OpenId2.Types,
                      OpenId2.XRDS
     ghc-options:     -Wall
+
+    if flag(network-uri)
+      build-depends: network-uri >= 2.6
+    else
+      build-depends: network < 2.6
 
 source-repository head
   type:     git
