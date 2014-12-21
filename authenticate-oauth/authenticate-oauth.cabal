@@ -1,16 +1,17 @@
 name:            authenticate-oauth
-version:         1.5
+version:         1.5.0.1
 license:         BSD3
 license-file:    LICENSE
 author:          Hiromi Ishii
 maintainer:      Hiromi Ishii
 synopsis:        Library to authenticate with OAuth for Haskell web applications.
-description:     OAuth authentication, e.g. Twitter.
+description:     API docs and the README are available at <http://www.stackage.org/package/authenticate-oauth>.
 category:        Web
 stability:       Stable
 cabal-version:   >= 1.6
 build-type:      Simple
 homepage:        http://github.com/yesodweb/authenticate
+extra-source-files: README.md ChangeLog.md
 
 library
     build-depends:   base                          >= 4        && < 5
