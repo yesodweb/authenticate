@@ -6,6 +6,7 @@ module Web.Authenticate.OAuth
       oauthAuthorizeUri, oauthSignatureMethod, oauthConsumerKey,
       oauthConsumerSecret, oauthCallback, oauthRealm, oauthVersion,
       OAuthVersion(..), SignMethod(..), Credential(..), OAuthException(..),
+      AccessTokenRequest(..),
       -- * Operations for credentials
       newCredential, emptyCredential, insert, delete, inserts, injectVerifier,
       -- * Signature
@@ -16,12 +17,15 @@ module Web.Authenticate.OAuth
       getTemporaryCredentialProxy, getTemporaryCredential',
       -- ** Authorization URL
       authorizeUrl, authorizeUrl',
+      -- ** Attaching auth to requests
+      addAuthBody,
       -- ** Finishing authentication
       getAccessToken,
       getAccessTokenProxy,
       getTokenCredential,
       getTokenCredentialProxy,
       getAccessToken',
+      getAccessTokenWith,
       -- * Utility Methods
       paramEncode, addScope, addMaybeProxy
     ) where
@@ -72,7 +76,7 @@ data OAuth = OAuth { oauthServerName      :: String -- ^ Service name (default: 
                    --   or 'getTemporaryCredential'; otherwise you can just leave this empty.
                    , oauthAccessTokenUri  :: String
                    -- ^ Uri to obtain access token (default: @\"\"@).
-                   --   You MUST specify if you use 'getAcessToken' or 'getAccessToken'';
+                   --   You MUST specify if you use 'getAcessToken' or 'getAccessToken'' or 'getAccessTokenWith';
                    --   otherwise you can just leave this empty.
                    , oauthAuthorizeUri    :: String
                    -- ^ Uri to authorize (default: @\"\"@).
@@ -130,6 +134,15 @@ data OAuthException = OAuthException String
 instance Exception OAuthException
 
 
+-- | Data type for getAccessTokenWith method.
+data AccessTokenRequest = AccessTokenRequest {
+    accessTokenAddAuth :: (BS.ByteString -> Credential -> Request -> Request)  -- ^ add auth hook
+  , accessTokenRequestHook :: (Request -> Request)                             -- ^ Request Hook
+  , accessTokenOAuth :: OAuth                                                  -- ^ OAuth Application
+  , accessTokenTemporaryCredential :: Credential                               -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
+  , accessTokenManager :: Manager                                              -- ^ Manager
+  }
+
 ----------------------------------------------------------------------
 -- Credentials
 
@@ -185,11 +198,20 @@ signOAuth :: MonadIO m
           -> Credential         -- ^ Credential
           -> Request            -- ^ Original Request
           -> m Request          -- ^ Signed OAuth Request
-signOAuth oa crd req = do
+signOAuth oa crd req = signOAuth' oa crd addAuthHeader req
+
+-- | More flexible signOAuth
+signOAuth' :: MonadIO m
+          => OAuth              -- ^ OAuth Application
+          -> Credential         -- ^ Credential
+          -> (BS.ByteString -> Credential -> Request -> Request) -- ^ signature style
+          -> Request            -- ^ Original Request
+          -> m Request          -- ^ Signed OAuth Request
+signOAuth' oa crd add_auth req = do
   crd' <- addTimeStamp =<< addNonce crd
   let tok = injectOAuthToCred oa crd'
   sign <- genSign oa tok req
-  return $ addAuthHeader prefix (insert "oauth_signature" sign tok) req
+  return $ add_auth prefix (insert "oauth_signature" sign tok) req
   where
     prefix = case oauthRealm oa of
       Nothing -> "OAuth "
@@ -307,21 +329,36 @@ getAccessTokenProxy, getTokenCredentialProxy
                -> m Credential -- ^ Token Credential (Access Token & Secret)
 getAccessTokenProxy p = getAccessToken' $ addMaybeProxy p
 
-
 getAccessToken' :: MonadIO m
                 => (Request -> Request)       -- ^ Request Hook
                 -> OAuth                      -- ^ OAuth Application
                 -> Credential                 -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
                 -> Manager
                 -> m Credential     -- ^ Token Credential (Access Token & Secret)
-getAccessToken' hook oa cr manager = do
-  let req = hook (fromJust $ parseUrl $ oauthAccessTokenUri oa) { method = "POST" }
-  rsp <- liftIO $ flip httpLbs manager =<< signOAuth oa (if oauthVersion oa == OAuth10 then delete "oauth_verifier" cr else cr) req
-  if responseStatus rsp == status200
-    then do
-      let dic = parseSimpleQuery . toStrict . responseBody $ rsp
-      return $ Credential dic
-    else liftIO . throwIO . OAuthException $ "Gaining OAuth Token Credential Failed: " ++ BSL.unpack (responseBody rsp)
+getAccessToken' hook oauth cr manager = do
+    maybe_access_token <- getAccessTokenWith AccessTokenRequest { accessTokenAddAuth = addAuthHeader, accessTokenRequestHook = hook, accessTokenOAuth = oauth, accessTokenTemporaryCredential = cr, accessTokenManager = manager }
+    case maybe_access_token of 
+        Left error_response -> liftIO . throwIO . OAuthException $ "Gaining OAuth Token Credential Failed: " ++ BSL.unpack (responseBody error_response)
+        Right access_token -> return access_token
+
+getAccessTokenWith :: MonadIO m
+                => AccessTokenRequest -- ^ extensible parameters
+                -> m (Either (Response BSL.ByteString) Credential)     -- ^ Token Credential (Access Token & Secret) or the conduit response on failures
+getAccessTokenWith params = do
+      let req = hook (fromJust $ parseUrl $ oauthAccessTokenUri oa) { method = "POST" }
+      rsp <- liftIO $ flip httpLbs manager =<< signOAuth' oa (if oauthVersion oa == OAuth10 then delete "oauth_verifier" cr else cr) add_auth req
+      if responseStatus rsp == status200
+        then do
+          let dic = parseSimpleQuery . toStrict . responseBody $ rsp
+          return $ Right $ Credential dic
+        else
+          return $ Left rsp
+    where
+      add_auth = accessTokenAddAuth params
+      hook = accessTokenRequestHook params
+      oa = accessTokenOAuth params
+      cr = accessTokenTemporaryCredential params
+      manager = accessTokenManager params
 
 getTokenCredential = getAccessToken
 getTokenCredentialProxy = getAccessTokenProxy
@@ -355,12 +392,22 @@ injectOAuthToCred oa cred =
             ] cred
 
 
+-- | Note that the first parameter is used for realm in 'addAuthHeader', and
+-- this 'addAuthBody' needs the same type as either may be given to
+-- 'getAccessTokenWith'.
+addAuthBody :: a -> Credential -> Request -> Request
+addAuthBody _ (Credential cred) req = urlEncodedBody (filterCreds cred) req
+
 addAuthHeader :: BS.ByteString -> Credential -> Request -> Request
 addAuthHeader prefix (Credential cred) req =
   req { requestHeaders = insertMap "Authorization" (renderAuthHeader prefix cred) $ requestHeaders req }
 
 renderAuthHeader :: BS.ByteString -> [(BS.ByteString, BS.ByteString)] -> BS.ByteString
-renderAuthHeader prefix = (prefix `BS.append`). BS.intercalate "," . map (\(a,b) -> BS.concat [paramEncode a, "=\"",  paramEncode b, "\""]) . filter ((`elem` ["oauth_token", "oauth_verifier", "oauth_consumer_key", "oauth_signature_method", "oauth_timestamp", "oauth_nonce", "oauth_version", "oauth_callback", "oauth_signature"]) . fst)
+renderAuthHeader prefix = (prefix `BS.append`). BS.intercalate "," . map (\(a,b) -> BS.concat [paramEncode a, "=\"",  paramEncode b, "\""]) . filterCreds
+
+filterCreds :: [(BS.ByteString, BS.ByteString)] -> [(BS.ByteString, BS.ByteString)]
+filterCreds = filter ((`elem` ["oauth_token", "oauth_verifier", "oauth_consumer_key", "oauth_signature_method", "oauth_timestamp", "oauth_nonce", "oauth_version", "oauth_callback", "oauth_signature"]) . fst)
+
 
 getBaseString :: MonadIO m => Credential -> Request -> m BSL.ByteString
 getBaseString tok req = do
