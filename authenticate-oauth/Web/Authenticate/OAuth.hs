@@ -6,7 +6,14 @@ module Web.Authenticate.OAuth
       oauthAuthorizeUri, oauthSignatureMethod, oauthConsumerKey,
       oauthConsumerSecret, oauthCallback, oauthRealm, oauthVersion,
       OAuthVersion(..), SignMethod(..), Credential(..), OAuthException(..),
-      AccessTokenRequest(..),
+      -- ** Access token request
+      AccessTokenRequest,
+      defaultAccessTokenRequest,
+      accessTokenAddAuth,
+      accessTokenRequestHook,
+      accessTokenOAuth,
+      accessTokenTemporaryCredential,
+      accessTokenManager,
       -- * Operations for credentials
       newCredential, emptyCredential, insert, delete, inserts, injectVerifier,
       -- * Signature
@@ -135,13 +142,51 @@ instance Exception OAuthException
 
 
 -- | Data type for getAccessTokenWith method.
+--
+-- You can create values of this type using 'defaultAccessTokenRequest'.
+--
+-- Since 1.5.1
 data AccessTokenRequest = AccessTokenRequest {
-    accessTokenAddAuth :: (BS.ByteString -> Credential -> Request -> Request)  -- ^ add auth hook
-  , accessTokenRequestHook :: (Request -> Request)                             -- ^ Request Hook
-  , accessTokenOAuth :: OAuth                                                  -- ^ OAuth Application
-  , accessTokenTemporaryCredential :: Credential                               -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
-  , accessTokenManager :: Manager                                              -- ^ Manager
+    accessTokenAddAuth :: (BS.ByteString -> Credential -> Request -> Request)
+    -- ^ add auth hook.
+    --
+    -- Default: addAuthHeader
+    --
+    -- Since 1.5.1
+  , accessTokenRequestHook :: (Request -> Request)
+    -- ^ Request Hook.
+    --
+    -- Default: @id@
+    --
+    -- Since 1.5.1
+  , accessTokenOAuth :: OAuth
+    -- ^ OAuth Application
+    --
+    -- Since 1.5.1
+  , accessTokenTemporaryCredential :: Credential
+    -- ^ Temporary Credential (with oauth_verifier if >= 1.0a)
+    --
+    -- Since 1.5.1
+  , accessTokenManager :: Manager
+    -- ^ Manager
+    --
+    -- Since 1.5.1
   }
+
+-- | Create a value of type 'AccessTokenRequest' with default values filled in.
+--
+-- Note that this is a settings type. More information on usage can be found
+-- at: <http://www.yesodweb.com/book/settings-types>.
+--
+-- Since 1.5.1
+defaultAccessTokenRequest :: OAuth -> Credential -> Manager -> AccessTokenRequest
+defaultAccessTokenRequest oauth cred man = AccessTokenRequest
+    { accessTokenAddAuth = addAuthHeader
+    , accessTokenRequestHook = id
+    , accessTokenOAuth = oauth
+    , accessTokenTemporaryCredential = cred
+    , accessTokenManager = man
+    }
 
 ----------------------------------------------------------------------
 -- Credentials
@@ -392,8 +437,12 @@ injectOAuthToCred oa cred =
             ] cred
 
 
+-- | Place the authentication information in a URL encoded body instead of the Authorization header.
+--
 -- Note that the first parameter is used for realm in addAuthHeader, and this
--- function needs the same type.
+-- function needs the same type. The parameter, however, is unused.
+--
+-- Since 1.5.1
 addAuthBody :: a -> Credential -> Request -> Request
 addAuthBody _ (Credential cred) req = urlEncodedBody (filterCreds cred) req
 
