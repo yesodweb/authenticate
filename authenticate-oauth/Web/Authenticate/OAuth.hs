@@ -485,7 +485,7 @@ getBaseString tok req = do
 paramEncode :: BS.ByteString -> BS.ByteString
 paramEncode = BS.concatMap escape
   where
-    escape c | isAscii c && (isAlpha c || isDigit c || c `elem` "-._~") = BS.singleton c
+    escape c | isAscii c && (isAlpha c || isDigit c || c `elem` ("-._~" :: String)) = BS.singleton c
              | otherwise = let num = map toUpper $ showHex (ord c) ""
                                oct = '%' : replicate (2 - length num) '0' ++ num
                            in BS.pack oct
