@@ -1,1 +1,3 @@
-No changes logged yet
+## 1.3.3
+
+Deprecated Google OpenID support

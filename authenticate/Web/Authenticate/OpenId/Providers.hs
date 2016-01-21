@@ -15,6 +15,7 @@ module Web.Authenticate.OpenId.Providers
 
 google :: String
 google = "https://www.google.com/accounts/o8/id"
+{-# DEPRECATED google "Google no longer provides OpenID support" #-}
 
 yahoo :: String
 yahoo = "http://me.yahoo.com/"
