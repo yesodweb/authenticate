@@ -17,7 +17,7 @@ module Web.Authenticate.OAuth
       -- * Operations for credentials
       newCredential, emptyCredential, insert, delete, inserts, injectVerifier,
       -- * Signature
-      signOAuth, genSign,
+      signOAuth, genSign, checkOAuth,
       -- * Url & operation for authentication
       -- ** Temporary credentials
       getTemporaryCredential, getTemporaryCredentialWithScope,
@@ -263,7 +263,7 @@ signOAuth' oa crd withHash add_auth req = do
   let prefix = case oauthRealm oa of
         Nothing -> "OAuth "
         Just v  -> "OAuth realm=\"" `BS.append` v `BS.append` "\","
-  return $ add_auth (prefix `BS.append` encodeHash mhash)
+  return $ add_auth prefix
                     (insert "oauth_signature" sign tok)
                     req
   where -- adding extension https://oauth.googlecode.com/svn/spec/ext/body_hash/1.0/oauth-bodyhash.html
@@ -275,8 +275,8 @@ signOAuth' oa crd withHash add_auth req = do
              . bytestringDigest
              . sha1
              . BSL.fromStrict <$> loadBodyBS req
-    encodeHash (Just h) = "oauth_body_hash=\"" `BS.append` paramEncode h `BS.append` "\","
-    encodeHash Nothing  = ""
+    -- encodeHash (Just h) = "oauth_body_hash=\"" `BS.append` paramEncode h `BS.append` "\","
+    -- encodeHash Nothing  = ""
     addHashToCred (Just h) = insert "oauth_body_hash" h
     addHashToCred Nothing  = id
 
@@ -296,25 +296,35 @@ genSign oa tok req =
 
 -- | Test existing OAuth signature.
 --   Since 1.5.2
-checkOAuth :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthException Bool)
-checkOAuth oa crd req =  mosig >>= \osig -> do
-  mhash <- moauth_body_hash
-  case (==) <$> moauth_body_hash_orig <*> mhash of
-    Just False -> return $ Left $ OAuthException "Failed to check oauth_body_hash"
-    _ -> let tok = addHashToCred mhash . injectOAuthToCred oa $ inserts (remParams authParams) crd
-         in Right . (osig ==) <$> genSign oa tok req
+checkOAuth :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthException Request)
+checkOAuth oa crd req = do
+  case mosig of
+    Nothing -> return . Left $ OAuthException "oauth_signature parameter not found"
+    Just osig -> do
+      mhash <- moauth_body_hash
+      case (\oh nh -> oh == paramEncode nh) <$> moauth_body_hash_orig <*> mhash of
+        Just False -> return $ Left $ OAuthException "Failed test of oauth_body_hash"
+        _ -> let tok = addHashToCred mhash . injectOAuthToCred oa $ inserts (remParams authParams) crd
+             in (\nsig -> if osig == paramEncode nsig
+                          then Right req
+                          else Left $ OAuthException "Failed test of oauth_signature")
+                <$> genSign oa tok req
+                  {requestHeaders = catMaybes [mtypeHeader]}
   where
     origHeaders = requestHeaders req
     mauthHeader = List.find ( ("Authorization" ==) . fst) $ origHeaders
     mtypeHeader = List.find ( ("Content-Type" ==) . fst) $ origHeaders
     authParams = map parseParam . BS.split ',' . BS.drop 6 . snd <$> mauthHeader
     remParams Nothing = []
-    remParams (Just ms) = filter ( ("oauth_signature" /=) . fst) ms
-    mosig = case fmap snd . join $ List.find (("oauth_signature" ==) . fst) <$> authParams of
-             Nothing -> return . Left $ OAuthException "oauth_signature parameter not found"
-             Just s -> return s
+    remParams (Just ms) = filter ( not . flip elem
+                                            ("realm" : "oauth_signature" : map fst (unCredential crd))
+                                       . fst) ms
+    mosig = fmap snd . join $ List.find (("oauth_signature" ==) . fst) <$> authParams
     parseParam = second (BS.takeWhile ('"' /=) . BS.drop 1 . BS.dropWhile ('"' /=))
-               . BS.span ('=' ==) . BS.dropWhile (' ' ==)
+               . splitEq . BS.dropWhile (' ' ==)
+    splitEq s = case BS.elemIndex '=' s of
+                  Nothing -> (s,"")
+                  Just i -> BS.splitAt i s
     moauth_body_hash_orig = join $ fmap snd . List.find ( ("oauth_body_hash" ==) . fst) <$> authParams
     moauth_body_hash = if moauth_body_hash_orig == Nothing
           then return Nothing
@@ -484,7 +494,7 @@ showSigMtd (RSASHA1 _) = "RSA-SHA1"
 
 addNonce :: MonadIO m => Credential -> m Credential
 addNonce cred = do
-  nonce <- liftIO $ replicateM 10 (randomRIO ('a','9')) -- FIXME very inefficient
+  nonce <- liftIO $ replicateM 10 (randomRIO ('a','z')) -- FIXME very inefficient
   return $ insert "oauth_nonce" (BS.pack nonce) cred
 
 addTimeStamp :: MonadIO m => Credential -> m Credential
