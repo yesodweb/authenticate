@@ -297,7 +297,7 @@ genSign oa tok req =
 -- | Test existing OAuth signature.
 --   Since 1.5.2
 checkOAuth :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthException Request)
-checkOAuth oa crd req = do
+checkOAuth oa crd req = if isBodyFormEncoded origHeaders then checkOAuthB oa crd req else do
   case mosig of
     Nothing -> return . Left $ OAuthException "oauth_signature parameter not found"
     Just osig -> do
@@ -336,6 +336,30 @@ checkOAuth oa crd req = do
              . BSL.fromStrict <$> loadBodyBS req
     addHashToCred (Just h) = insert "oauth_body_hash" h
     addHashToCred Nothing  = id
+
+checkOAuthB :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthException Request)
+checkOAuthB oa crd req0 = do
+  (mosig, reqBody) <- getSig <$> loadBodyBS req0
+  let req = req0 {requestBody = RequestBodyBS reqBody}
+  liftIO $ print reqBody
+  liftIO $ print mosig
+  case mosig of
+    "" -> return . Left $ OAuthException "oauth_signature parameter not found"
+    osig -> do
+          let tok = injectOAuthToCred oa crd
+          nsig <- genSign oa tok req
+          liftIO $ print $ paramEncode nsig
+          liftIO $ print nsig
+          return $ if osig == paramEncode nsig
+                          then Right req0
+                          else Left $ OAuthException "Failed test of oauth_signature"
+--                <$> genSign oa tok req
+  where
+    getSig b = let (h1 , r ) = BS.breakSubstring "&oauth_signature=" b
+                   (sig, h2) = BS.breakSubstring "&" $ BS.drop 17 r
+               in (sig, h1 `BS.append` h2)
+
+
 
 ----------------------------------------------------------------------
 -- Temporary credentails
@@ -535,10 +559,10 @@ filterCreds :: [(BS.ByteString, BS.ByteString)] -> [(BS.ByteString, BS.ByteStrin
 -- 6.1.1, 6.1.2, 6.2.1,  6.3.2 and 7 allow encoding anything in the authorization parameters
 -- 6.2.3 is only limited to oauth_token and oauth_verifier (although query params are allowed)
 -- 6.3.1 does not allow specifing other params, so no need to filter them (it is an error anyway)
-filterCreds = filter (("realm" /=) . fst )
+filterCreds = filter (not . flip elem ["realm", "oauth_token_secret"] . fst )
 --filterCreds = filter ((`elem` [ "oauth_consumer_key"
 --                              , "oauth_token"
---                              , "oauth_version"
+--                              , "oauth_signature"
 --                              , "oauth_signature_method"
 --                              , "oauth_timestamp"
 --                              , "oauth_nonce"
