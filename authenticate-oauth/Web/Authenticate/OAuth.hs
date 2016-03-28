@@ -341,15 +341,10 @@ checkOAuthB :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthExc
 checkOAuthB oa crd req0 = do
   (mosig, reqBody) <- getSig <$> loadBodyBS req0
   let req = req0 {requestBody = RequestBodyBS reqBody}
-  liftIO $ print reqBody
-  liftIO $ print mosig
   case mosig of
     "" -> return . Left $ OAuthException "oauth_signature parameter not found"
     osig -> do
-          let tok = injectOAuthToCred oa crd
-          nsig <- genSign oa tok req
-          liftIO $ print $ paramEncode nsig
-          liftIO $ print nsig
+          nsig <- genSign oa crd req
           return $ if osig == paramEncode nsig
                           then Right req0
                           else Left $ OAuthException "Failed test of oauth_signature"
