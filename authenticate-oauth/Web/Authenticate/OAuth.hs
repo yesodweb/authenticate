@@ -39,6 +39,10 @@ module Web.Authenticate.OAuth
 
 import           Blaze.ByteString.Builder     (toByteString)
 import           Control.Exception
+#if MIN_VERSION_base(4,8,0)
+#else
+import           Control.Applicative          ((<*>),(<$>))
+#endif
 import           Control.Arrow                (second)
 import           Control.Monad
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
