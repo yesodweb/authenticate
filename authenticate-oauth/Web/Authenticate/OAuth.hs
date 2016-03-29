@@ -39,10 +39,6 @@ module Web.Authenticate.OAuth
 
 import           Blaze.ByteString.Builder     (toByteString)
 import           Control.Exception
-#if MIN_VERSION_base(4,8,0)
-#else
-import           Control.Applicative          ((<*>),(<$>))
-#endif
 import           Control.Arrow                (second)
 import           Control.Monad
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
@@ -273,12 +269,12 @@ signOAuth' oa crd withHash add_auth req = do
   where -- adding extension https://oauth.googlecode.com/svn/spec/ext/body_hash/1.0/oauth-bodyhash.html
     moauth_body_hash = if not withHash || isBodyFormEncoded (requestHeaders req)
           then return Nothing
-          else Just
+          else (Just
              . encode
              . BSL.toStrict
              . bytestringDigest
              . sha1
-             . BSL.fromStrict <$> loadBodyBS req
+             . BSL.fromStrict) `liftM` loadBodyBS req
     -- encodeHash (Just h) = "oauth_body_hash=\"" `BS.append` paramEncode h `BS.append` "\","
     -- encodeHash Nothing  = ""
     addHashToCred (Just h) = insert "oauth_body_hash" h
@@ -306,44 +302,44 @@ checkOAuth oa crd req = if isBodyFormEncoded origHeaders then checkOAuthB oa crd
     Nothing -> return . Left $ OAuthException "oauth_signature parameter not found"
     Just osig -> do
       mhash <- moauth_body_hash
-      case (\oh nh -> oh == paramEncode nh) <$> moauth_body_hash_orig <*> mhash of
+      case (\oh nh -> oh == paramEncode nh) `liftM` moauth_body_hash_orig `ap` mhash of
         Just False -> return $ Left $ OAuthException "Failed test of oauth_body_hash"
         _ -> let tok = addHashToCred mhash . injectOAuthToCred oa $ inserts (remParams authParams) crd
              in (\nsig -> if osig == paramEncode nsig
                           then Right req
                           else Left $ OAuthException "Failed test of oauth_signature")
-                <$> genSign oa tok req
+                `liftM` genSign oa tok req
                   {requestHeaders = catMaybes [mtypeHeader]}
   where
     origHeaders = requestHeaders req
     mauthHeader = List.find ( ("Authorization" ==) . fst) $ origHeaders
     mtypeHeader = List.find ( ("Content-Type" ==) . fst) $ origHeaders
-    authParams = map parseParam . BS.split ',' . BS.drop 6 . snd <$> mauthHeader
+    authParams = (map parseParam . BS.split ',' . BS.drop 6 . snd) `liftM` mauthHeader
     remParams Nothing = []
     remParams (Just ms) = filter ( not . flip elem
                                             ("realm" : "oauth_signature" : map fst (unCredential crd))
                                        . fst) ms
-    mosig = fmap snd . join $ List.find (("oauth_signature" ==) . fst) <$> authParams
+    mosig = fmap snd . join $ List.find (("oauth_signature" ==) . fst) `liftM` authParams
     parseParam = second (BS.takeWhile ('"' /=) . BS.drop 1 . BS.dropWhile ('"' /=))
                . splitEq . BS.dropWhile (' ' ==)
     splitEq s = case BS.elemIndex '=' s of
                   Nothing -> (s,"")
                   Just i -> BS.splitAt i s
-    moauth_body_hash_orig = join $ fmap snd . List.find ( ("oauth_body_hash" ==) . fst) <$> authParams
+    moauth_body_hash_orig = join $ (fmap snd . List.find ( ("oauth_body_hash" ==) . fst)) `liftM` authParams
     moauth_body_hash = if moauth_body_hash_orig == Nothing
           then return Nothing
-          else Just
+          else (Just
              . encode
              . BSL.toStrict
              . bytestringDigest
              . sha1
-             . BSL.fromStrict <$> loadBodyBS req
+             . BSL.fromStrict) `liftM` loadBodyBS req
     addHashToCred (Just h) = insert "oauth_body_hash" h
     addHashToCred Nothing  = id
 
 checkOAuthB :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthException Request)
 checkOAuthB oa crd req0 = do
-  (mosig, reqBody) <- getSig <$> loadBodyBS req0
+  (mosig, reqBody) <- getSig `liftM` loadBodyBS req0
   let req = req0 {requestBody = RequestBodyBS reqBody}
   case mosig of
     "" -> return . Left $ OAuthException "oauth_signature parameter not found"
