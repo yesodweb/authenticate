@@ -27,6 +27,7 @@ library
                    , random
                    , http-types                    >= 0.6
                    , blaze-builder
+                   , transformers-compat           >= 0.3
     exposed-modules: Web.Authenticate.OAuth, Web.Authenticate.OAuth.IO
     ghc-options:     -Wall
 

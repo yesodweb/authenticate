@@ -42,6 +42,7 @@ import           Control.Exception
 import           Control.Arrow                (second)
 import           Control.Monad
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
+import           Control.Monad.Trans.Except
 import           Crypto.Types.PubKey.RSA      (PrivateKey (..)) -- , PublicKey (..)
 import           Data.ByteString.Base64
 import qualified Data.ByteString.Char8        as BS
@@ -296,20 +297,22 @@ genSign oa tok req =
 
 -- | Test existing OAuth signature.
 --   Since 1.5.2
-checkOAuth :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthException Request)
+checkOAuth :: MonadIO m
+           => OAuth -> Credential -> Request
+           -> ExceptT OAuthException m Request
 checkOAuth oa crd req = if isBodyFormEncoded origHeaders then checkOAuthB oa crd req else do
   case mosig of
-    Nothing -> return . Left $ OAuthException "oauth_signature parameter not found"
+    Nothing -> throwE $ OAuthException "oauth_signature parameter not found"
     Just osig -> do
       mhash <- moauth_body_hash
       case (\oh nh -> oh == paramEncode nh) `liftM` moauth_body_hash_orig `ap` mhash of
-        Just False -> return $ Left $ OAuthException "Failed test of oauth_body_hash"
+        Just False -> throwE $ OAuthException "Failed test of oauth_body_hash"
         _ -> let tok = addHashToCred mhash . injectOAuthToCred oa $ inserts (remParams authParams) crd
-             in (\nsig -> if osig == paramEncode nsig
-                          then Right req
-                          else Left $ OAuthException "Failed test of oauth_signature")
-                `liftM` genSign oa tok req
+             in genSign oa tok req
                   {requestHeaders = catMaybes [mtypeHeader]}
+                >>= \nsig -> if osig == paramEncode nsig
+                             then return req
+                             else throwE $ OAuthException "Failed test of oauth_signature"
   where
     origHeaders = requestHeaders req
     mauthHeader = List.find ( ("Authorization" ==) . fst) $ origHeaders
@@ -337,18 +340,19 @@ checkOAuth oa crd req = if isBodyFormEncoded origHeaders then checkOAuthB oa crd
     addHashToCred (Just h) = insert "oauth_body_hash" h
     addHashToCred Nothing  = id
 
-checkOAuthB :: MonadIO m => OAuth -> Credential -> Request -> m (Either OAuthException Request)
+checkOAuthB :: MonadIO m
+            => OAuth -> Credential -> Request
+            -> ExceptT OAuthException m Request
 checkOAuthB oa crd req0 = do
   (mosig, reqBody) <- getSig `liftM` loadBodyBS req0
   let req = req0 {requestBody = RequestBodyBS reqBody}
   case mosig of
-    "" -> return . Left $ OAuthException "oauth_signature parameter not found"
+    "" -> throwE $ OAuthException "oauth_signature parameter not found"
     osig -> do
           nsig <- genSign oa crd req
-          return $ if osig == paramEncode nsig
-                          then Right req0
-                          else Left $ OAuthException "Failed test of oauth_signature"
---                <$> genSign oa tok req
+          if osig == paramEncode nsig
+            then return req0
+            else throwE $ OAuthException "Failed test of oauth_signature"
   where
     getSig b = let (h1 , r ) = BS.breakSubstring "&oauth_signature=" b
                    (sig, h2) = BS.breakSubstring "&" $ BS.drop 17 r
