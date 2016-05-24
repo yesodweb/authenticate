@@ -1,3 +1,7 @@
+## 1.5.1.2
+
+* Allow newest transformers
+
 ## 1.5.1
 
 * [Add getAccessTokenWith #42](https://github.com/yesodweb/authenticate/pull/42)
