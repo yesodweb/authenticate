@@ -642,6 +642,10 @@ toBS (RequestBodyBS s) = return s
 toBS (RequestBodyBuilder _ b) = return $ toByteString b
 toBS (RequestBodyStream _ givesPopper) = toBS' givesPopper
 toBS (RequestBodyStreamChunked givesPopper) = toBS' givesPopper
+#if MIN_VERSION_http_client(0, 4, 28)
+toBS (RequestBodyIO op) = liftIO op >>= toBS
+#else
+#endif
 
 toBS' :: MonadIO m => GivesPopper () -> m BS.ByteString
 toBS' gp = liftIO $ do
