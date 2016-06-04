@@ -1,9 +1,9 @@
 name:            authenticate-oauth
-version:         1.5.1.2
+version:         1.6
 license:         BSD3
 license-file:    LICENSE
 author:          Hiromi Ishii
-maintainer:      Hiromi Ishii
+maintainer:      Hiromi Ishii, Artem Chirkin
 synopsis:        Library to authenticate with OAuth for Haskell web applications.
 description:     API docs and the README are available at <http://www.stackage.org/package/authenticate-oauth>.
 category:        Web
@@ -27,6 +27,7 @@ library
                    , random
                    , http-types                    >= 0.6
                    , blaze-builder
+                   , transformers-compat           >= 0.3
     exposed-modules: Web.Authenticate.OAuth, Web.Authenticate.OAuth.IO
     ghc-options:     -Wall
 
