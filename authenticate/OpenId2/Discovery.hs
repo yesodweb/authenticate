@@ -73,20 +73,32 @@ discoverYADIS :: (MonadResource m, MonadBaseControl IO m)
               -> Int -- ^ remaining redirects
               -> Manager
               -> m (Maybe (Provider, Identifier, IdentType))
-discoverYADIS _ _ 0 _ = liftIO $ throwIO $ TooManyRedirects
+discoverYADIS _ _ 0 _ =
+#if MIN_VERSION_http_conduit(2, 2, 0)
+    error "discoverYADIS: Too many redirects"
+#else
+    liftIO $ throwIO $ TooManyRedirects
 #if MIN_VERSION_http_conduit(1,6,0)
-    []
+        []
+#endif
 #endif
 discoverYADIS ident mb_loc redirects manager = do
     let uri = fromMaybe (unpack $ identifier ident) mb_loc
+#if MIN_VERSION_http_conduit(2, 2, 0)
+    req <- liftIO $ parseRequest uri
+#else
     req <- liftIO $ parseUrl uri
+#endif
     res <- httpLbs req
+#if !MIN_VERSION_http_conduit(2, 2, 0)
 #if MIN_VERSION_http_conduit(1, 9, 0)
         { checkStatus = \_ _ _ -> Nothing
 #else
         { checkStatus = \_ _ -> Nothing
 #endif
-        } manager
+        }
+#endif
+        manager
     let mloc = fmap S8.unpack
              $ lookup "x-xrds-location"
              $ map (first $ map toLower . S8.unpack . CI.original)
