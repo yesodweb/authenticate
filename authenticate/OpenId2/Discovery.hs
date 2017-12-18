@@ -40,8 +40,6 @@ import Data.Text.Encoding.Error (lenientDecode)
 import Control.Applicative ((<$>), (<*>))
 import Network.HTTP.Types (status200)
 import Control.Exception (throwIO)
-import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Trans.Resource (MonadResource)
 import Data.Conduit ((=$), ($$), yield)
 import Text.HTML.TagStream.Text (tokenStream, Token)
 import Text.HTML.TagStream.Types (Token' (TagOpen))
@@ -52,7 +50,7 @@ data Discovery = Discovery1 Text (Maybe Text)
     deriving Show
 
 -- | Attempt to resolve an OpenID endpoint, and user identifier.
-discover :: (MonadBaseControl IO m, MonadIO m, MonadResource m) => Identifier -> Manager -> m Discovery
+discover :: MonadIO m => Identifier -> Manager -> m Discovery
 discover ident@(Identifier i) manager = do
     res1 <- discoverYADIS ident Nothing 10 manager
     case res1 of
@@ -67,7 +65,7 @@ discover ident@(Identifier i) manager = do
 
 -- | Attempt a YADIS based discovery, given a valid identifier.  The result is
 --   an OpenID endpoint, and the actual identifier for the user.
-discoverYADIS :: (MonadResource m, MonadBaseControl IO m)
+discoverYADIS :: MonadIO m
               => Identifier
               -> Maybe String
               -> Int -- ^ remaining redirects
@@ -141,9 +139,9 @@ parseYADIS ident = listToMaybe . mapMaybe isOpenId . concat
 
 -- | Attempt to discover an OpenID endpoint, from an HTML document.  The result
 -- will be an endpoint on success, and the actual identifier of the user.
-discoverHTML :: (MonadResource m, MonadBaseControl IO m) => Identifier -> Manager -> m (Maybe Discovery)
+discoverHTML :: MonadIO m => Identifier -> Manager -> m (Maybe Discovery)
 discoverHTML ident'@(Identifier ident) manager = do
-    req <- liftIO $ parseUrl $ unpack ident
+    req <- liftIO $ parseUrlThrow $ unpack ident
     lbs <- liftM responseBody $ httpLbs req manager
     return $ parseHTML ident' . toStrict . decodeUtf8With lenientDecode $ lbs
 

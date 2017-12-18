@@ -38,8 +38,6 @@ import qualified Data.Aeson.Types
 import qualified Data.HashMap.Lazy as Map
 import Control.Applicative ((<$>), (<*>))
 import Control.Exception (throwIO)
-import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Trans.Resource (MonadResource)
 
 -- | Information received from Rpxnow after a valid login.
 data Identifier = Identifier
@@ -49,7 +47,7 @@ data Identifier = Identifier
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 
 -- | Attempt to log a user in.
-authenticate :: (MonadResource m, MonadBaseControl IO m)
+authenticate :: MonadIO m
              => String -- ^ API key given by RPXNOW.
              -> String -- ^ Token passed by client.
              -> Manager
@@ -61,7 +59,7 @@ authenticate apiKey token manager = do
             , "&token="
             , S.pack token
             ]
-    req' <- liftIO $ parseUrl "https://rpxnow.com"
+    req' <- liftIO $ parseUrlThrow "https://rpxnow.com"
     let req =
             req'
                 { method = "POST"

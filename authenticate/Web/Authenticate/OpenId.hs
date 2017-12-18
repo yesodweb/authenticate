@@ -25,7 +25,7 @@ import Data.Text.Lazy.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Text.Lazy (toStrict)
 import Network.HTTP.Conduit
-    ( parseUrl, urlEncodedBody, responseBody, httpLbs
+    ( parseUrlThrow, urlEncodedBody, responseBody, httpLbs
     , Manager
     )
 import Control.Arrow ((***), second)
@@ -36,11 +36,9 @@ import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Blaze.ByteString.Builder (toByteString)
 import Network.HTTP.Types (renderQueryText)
 import Control.Exception (throwIO)
-import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Trans.Resource (MonadResource)
 
 getForwardUrl
-    :: (MonadResource m, MonadBaseControl IO m)
+    :: MonadIO m
     => Text -- ^ The openid the user provided.
     -> Text -- ^ The URL for this application\'s complete page.
     -> Maybe Text -- ^ Optional realm
@@ -81,7 +79,7 @@ getForwardUrl openid' complete mrealm params manager = do
                 : params
 
 authenticate
-    :: (MonadBaseControl IO m, MonadResource m, MonadIO m)
+    :: MonadIO m
     => [(Text, Text)]
     -> Manager
     -> m (Identifier, [(Text, Text)])
@@ -97,7 +95,7 @@ data OpenIdResponse = OpenIdResponse
     }
 
 authenticateClaimed
-    :: (MonadBaseControl IO m, MonadResource m, MonadIO m)
+    :: MonadIO m
     => [(Text, Text)]
     -> Manager
     -> m OpenIdResponse
@@ -124,7 +122,7 @@ authenticateClaimed params manager = do
     let params' = map (encodeUtf8 *** encodeUtf8)
                 $ ("openid.mode", "check_authentication")
                 : filter (\(k, _) -> k /= "openid.mode") params
-    req' <- liftIO $ parseUrl $ unpack $ endpoint discOP
+    req' <- liftIO $ parseUrlThrow $ unpack $ endpoint discOP
     let req = urlEncodedBody params' req'
     rsp <- httpLbs req manager
     let rps = parseDirectResponse $ toStrict $ decodeUtf8With lenientDecode $ responseBody rsp
