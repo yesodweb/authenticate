@@ -194,7 +194,7 @@ defaultAccessTokenRequest oauth cred man = AccessTokenRequest
 -- Credentials
 
 
--- | Data type for redential.
+-- | Data type for credential.
 newtype Credential = Credential -- we can easily change it back to "data" later if needed, right?
     { unCredential :: [(BS.ByteString, BS.ByteString)] }
     deriving (Show, Eq, Ord, Read, Data, Typeable)
