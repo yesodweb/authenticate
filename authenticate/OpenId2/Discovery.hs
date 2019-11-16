@@ -30,7 +30,7 @@ import Network.HTTP.Conduit
 import qualified Data.ByteString.Char8 as S8
 import Control.Arrow (first)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad (mplus, liftM)
+import Control.Monad (mplus, liftM, guard)
 import qualified Data.CaseInsensitive as CI
 import Data.Text (Text, unpack)
 import Data.Text.Lazy (toStrict)
@@ -40,10 +40,10 @@ import Data.Text.Encoding.Error (lenientDecode)
 import Control.Applicative ((<$>), (<*>))
 import Network.HTTP.Types (status200)
 import Control.Exception (throwIO)
-import Data.Conduit ((=$), ($$), yield)
-import Text.HTML.TagStream.Text (tokenStream, Token)
-import Text.HTML.TagStream.Types (Token' (TagOpen))
-import qualified Data.Conduit.List as CL
+import Text.HTML.DOM
+import Text.XML.Cursor
+import Text.XML (Node (..), Element (..))
+import qualified Data.Map as Map
 
 data Discovery = Discovery1 Text (Maybe Text)
                | Discovery2 Provider Identifier IdentType
@@ -149,15 +149,17 @@ discoverHTML ident'@(Identifier ident) manager = do
 -- document.
 parseHTML :: Identifier -> Text -> Maybe Discovery
 parseHTML ident text0 = do
-    ls <- yield text0
-       $$ tokenStream
-       =$ CL.mapMaybe linkTag
-       =$ CL.filter isOpenId
-       =$ CL.consume
+    let doc = parseSTChunks [text0]
+        cursor = fromDocument doc
+        links = map node $ cursor $// element "link"
+        ls = do
+          NodeElement (Element "link" as _) <- links
+          Just rel <- pure $ Map.lookup "rel" as
+          Just href <- pure $ Map.lookup "href" as
+          guard $ "openid" `T.isPrefixOf` rel
+          pure (rel, href)
     resolve ls
   where
-    isOpenId (rel, _x) = "openid" `T.isPrefixOf` rel
-
     resolve1 ls = do
       server <- lookup "openid.server" ls
       let delegate = lookup "openid.delegate" ls
@@ -170,9 +172,3 @@ parseHTML ident text0 = do
       return $ Discovery2 (Provider prov) lid ClaimedIdent
 
     resolve ls = resolve2 ls `mplus` resolve1 ls
-
-
--- | Filter out link tags from a list of html tags.
-linkTag :: Token -> Maybe (Text, Text)
-linkTag (TagOpen "link" as _) = (,) <$> lookup "rel" as <*> lookup "href" as
-linkTag _x = Nothing

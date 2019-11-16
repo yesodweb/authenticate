@@ -1,3 +1,9 @@
+# authenticate changelog
+
+## 1.3.5
+
+* Drop tagstream-conduit dep (for GHC 8.8 support)
+
 ## 1.3.4
 
 * Relaxed a bunch of type signatures
