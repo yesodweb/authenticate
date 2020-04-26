@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        resolver: [lts-15, lts-14, lts-12, lts-11, lts-9]
+        resolver: [nightly, lts-15, lts-14, lts-12, lts-11]
 
     steps:
       - name: Clone project

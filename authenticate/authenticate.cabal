@@ -18,7 +18,7 @@ flag network-uri
   default: True
 
 library
-    build-depends:   base                          >= 4.9      && < 5
+    build-depends:   base                          >= 4.10     && < 5
                    , aeson                         >= 0.5
                    , http-conduit                  >= 1.5
                    , transformers                  >= 0.1
