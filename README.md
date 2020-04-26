@@ -1,3 +1,5 @@
+![Tests](https://github.com/yesodweb/authenticate/workflows/Tests/badge.svg)
+
 Authentication methods for Haskell web applications.
 
 Note for Rpxnow: 
