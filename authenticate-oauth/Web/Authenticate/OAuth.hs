@@ -65,7 +65,7 @@ import Data.Data hiding (Proxy (..))
 #else
 import Data.Data
 #endif
-import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, hashSHA1)
+import Codec.Crypto.RSA (rsassa_pkcs1_v1_5_sign, hashSHA1, hashSHA256, hashSHA512)
 
 
 ----------------------------------------------------------------------
@@ -133,7 +133,11 @@ instance Default OAuth where
 -- | Data type for signature method.
 data SignMethod = PLAINTEXT
                 | HMACSHA1
+                | HMACSHA256
+                | HMACSHA512
                 | RSASHA1 PrivateKey
+                | RSASHA256 PrivateKey
+                | RSASHA512 PrivateKey
                   deriving (Show, Eq, Read, Data, Typeable)
 
 
@@ -290,10 +294,22 @@ genSign oa tok req =
       text <- getBaseString tok req
       let key  = BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
       return $ encode $ toStrict $ bytestringDigest $ hmacSha1 (fromStrict key) text
+    HMACSHA256 -> do
+      text <- getBaseString tok req
+      let key  = BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
+      return $ encode $ toStrict $ bytestringDigest $ hmacSha256 (fromStrict key) text
+    HMACSHA512 -> do
+      text <- getBaseString tok req
+      let key  = BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
+      return $ encode $ toStrict $ bytestringDigest $ hmacSha512 (fromStrict key) text
     PLAINTEXT ->
       return $ BS.intercalate "&" $ map paramEncode [oauthConsumerSecret oa, tokenSecret tok]
     RSASHA1 pr ->
       liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign hashSHA1 pr) (getBaseString tok req)
+    RSASHA256 pr ->
+      liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign hashSHA256 pr) (getBaseString tok req)
+    RSASHA512 pr ->
+      liftM (encode . toStrict . rsassa_pkcs1_v1_5_sign hashSHA512 pr) (getBaseString tok req)
 
 -- | Test existing OAuth signature.
 --   Since 1.5.2
@@ -513,7 +529,11 @@ baseTime = UTCTime day 0
 showSigMtd :: SignMethod -> BS.ByteString
 showSigMtd PLAINTEXT = "PLAINTEXT"
 showSigMtd HMACSHA1  = "HMAC-SHA1"
+showSigMtd HMACSHA256  = "HMAC-SHA256"
+showSigMtd HMACSHA512  = "HMAC-SHA512"
 showSigMtd (RSASHA1 _) = "RSA-SHA1"
+showSigMtd (RSASHA256 _) = "RSA-SHA256"
+showSigMtd (RSASHA512 _) = "RSA-SHA512"
 
 addNonce :: MonadIO m => Credential -> m Credential
 addNonce cred = do
