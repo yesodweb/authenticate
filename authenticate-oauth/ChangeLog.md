@@ -1,3 +1,7 @@
+## 1.7
+
+* Add support for following new SignMethod `HMACSHA256`, `HMACSHA512`, `RSASHA256`, `RSASHA512`
+
 ## 1.6
 
 * Add checkOAuth
